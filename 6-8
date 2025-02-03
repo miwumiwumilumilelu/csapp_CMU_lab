@@ -1,0 +1,52 @@
+2024/12/26
+#score:16/36 完成3道题
+#make clean
+#make bits.c
+#./btest
+#./dlc #这个文件用来约束代码规范，如第三题不允许有0x7fffffff,第四题不允许有0xAAAAAAAA，only 0x0-0xff allowed.
+
+/*
+ * isAsciiDigit - return 1 if 0x30 <= x <= 0x39 (ASCII codes for characters '0' to '9')
+ *   Example: isAsciiDigit(0x35) = 1.
+ *            isAsciiDigit(0x3a) = 0.
+ *            isAsciiDigit(0x05) = 0.
+ *   Legal ops: ! ~ & ^ | + << >>
+ *   Max ops: 15
+ *   Rating: 3
+ */
+int isAsciiDigit(int x) {
+  return (!((x>>4)^3))&((((x>>3)&1)&!(x>>1&1)&!(x>>2&1))|!((x>>3)&1));
+}
+/*
+ * conditional - same as x ? y : z
+ *   Example: conditional(2,4,5) = 4
+ *   Legal ops: ! ~ & ^ | + << >>
+ *   Max ops: 16
+ *   Rating: 3
+ */
+int conditional(int x, int y, int z) {
+//如果x为0则为0，如果x为非0则为1
+  int a=!!x;
+  int fan=~a+1;//取相反数,x为1,fan为0xffffffff or x为0,fan为0x00000000
+//以fan为位均为1
+  return (fan&y)|(~fan&z);
+}
+/*
+ * isLessOrEqual - if x <= y  then return 1, else return 0
+ *   Example: isLessOrEqual(4,5) = 1.
+ *   Legal ops: ! ~ & ^ | + << >>
+ *   Max ops: 24
+ *   Rating: 3
+ */
+int isLessOrEqual(int x, int y) {
+//x==y好判断,x<y <=> x-y<0 <=> x+(~y)+1<0 <=> 判断最高位即符号位是否为1
+//  return !(x^y)|((x+(~y)+1)>>31&1); 出错因为这题x，y运算还需要考虑溢出情况
+  int flagx=x>>31&1;
+  int flagy=y>>31&1;
+//如果符号相同则x-y不存在溢出，如果符号不同则可能存在溢出，所以这里需要判断符号
+  int flag=!!(flagx^flagy);//相同为0，不同为1
+  return  (!(x^y))|((!flag)&((x+(~y)+1)>>31&1))|(flag&flagx);//不同存在溢出而无法计算进行ret归类的情况是，x<0,y>0
+}
+#--------------------------------------------
+#运算会有溢出需要注意另寻方法
+#求相反数的方法上次题已经做过,因此可以利用＋来代替-
