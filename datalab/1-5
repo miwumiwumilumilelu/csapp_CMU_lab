@@ -1,0 +1,37 @@
+2024/12/24
+#score:7/36 完成5道题
+#make clean
+#make bits.c
+#./btest
+#./dlc #这个文件用来约束代码规范，如第三题不允许有0x7fffffff,第四题不允许有0xAAAAAAAA，only 0x0-0xff allowed.
+
+int bitXor(int x, int y) {
+  //x,y全为1时，&才为1，异或运算^是x,y相同为0，不同为1
+ //或者说:~((x&y)|(~x&~y))
+  return ~(~x&~y)&~(x&y);
+}
+
+int tmin(void) {
+//最小二进制补码:10000000000000000000000000000000
+  return 1<<31;
+}
+
+int isTmax(int x) {
+        return !(~((x+1)^x))+!!(~x)+(~0);//-1需要特判
+ // return !!(~x) & !((~x) ^ (x + 1));
+}
+
+int allOddBits(int x) {
+//odd位为1则为1，否则为0,用1010，也就是0xA
+//因为只需要关注奇数位，所以采用异或找到相同取0就行
+  int k=(0xAA<<24)+(0xAA<<16)+(0xAA<<8)+(0xAA);
+  return !((x&k)^k);
+}
+
+int negate(int x) {
+#取相反数，即取非＋1，就是求补码
+  return ~x+1;
+}
+
+#--------------------------------------------
+#!!(~x)可以用来判断x是否为-1
