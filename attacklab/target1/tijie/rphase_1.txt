@@ -17,9 +17,9 @@ functions start_farm and mid_farm.
 string will contain a combination of gadget addresses and data.	
 ----------------------------------------------------------------------------
 在阶段四我们需要用ROP攻击方式去攻击rtarget(ROP的全称为Return-oriented programming（返回导向编程）,其主要思想是在栈缓冲区溢出的基础上!!!，利用程序中已有的小片段!!! (gadgets) 来改变某些寄存器或者变量的值，从而控制程序的执行流程。)
-rt1阶段可用的片段为：从start_farm()函数开始到end_farm()结束中间所有的代码片段。具体如下farm.d文件(自己建立的,实际片段可以在rtarget.d文件(如果没有此文件请看前置工作内容)里面查找)
+rt1阶段可用的片段为：从start_farm()函数开始到end_farm()结束中间所有的代码片段。具体如下farm.s文件(自己建立的,实际片段可以在rtarget.d文件里面查找)
 ----------------------------------------------------------------------------
-farm.d:
+rtarget.s:
 0000000000401994 <start_farm>:
   401994:	b8 01 00 00 00       	mov    $0x1,%eax
   401999:	c3                   	retq   

