@@ -1,0 +1,69 @@
+This is the handout directory for the CS:APP Cache Lab. 
+
+************************
+Running the autograders:
+************************
+
+Before running the autograders, compile your code:
+    linux> make
+
+Check the correctness of your simulator:
+    linux> ./test-csim
+
+Check the correctness and performance of your transpose functions:
+    linux> ./test-trans -M 32 -N 32
+    linux> ./test-trans -M 64 -N 64
+    linux> ./test-trans -M 61 -N 67
+
+Check everything at once (this is the program that your instructor runs):
+    linux> ./driver.py    
+
+******
+Files:
+******
+
+# You will modifying and handing in these two files
+csim.c       Your cache simulator
+trans.c      Your transpose function
+
+# Tools for evaluating your simulator and transpose function
+Makefile     Builds the simulator and tools
+README       This file
+driver.py*   The driver program, runs test-csim and test-trans
+cachelab.c   Required helper functions
+cachelab.h   Required header file
+csim-ref*    The executable reference cache simulator
+test-csim*   Tests your cache simulator
+test-trans.c Tests your transpose function
+tracegen.c   Helper program used by test-trans
+traces/      Trace files used by test-csim.c
+
+
+本实验旨在帮助您深入理解缓存内存（Cache Memory）的工作原理，包括：
+缓存的组织结构（组相联映射、替换策略等）
+缓存命中/不命中/驱逐的行为特征
+通过编写缓存敏感的代码优化程序性能
+
+实验任务 (Tasks)
+Part A: 缓存模拟器 (Cache Simulator)
+编写 C 语言程序 csim.c
+模拟缓存内存行为，处理来自 Valgrind 的内存访问跟踪
+输出缓存命中次数（hits）、不命中次数（misses）和驱逐次数（evictions）
+Part B: 矩阵转置优化 (Matrix Transpose Optimization)
+修改 trans.c 中的 transpose_submit 函数
+针对不同矩阵大小（32x32, 64x64, 61x67）优化矩阵转置
+最小化缓存不命中次数（要求 miss 次数低于特定阈值）
+
+准备工作 (Preparation)
+安装 Valgrind 用于生成内存跟踪：
+sudo apt-get install valgrind
+确保具备以下工具：
+GCC 编译器
+Make 构建工具
+Python（用于自动评分脚本）
+提供的文件：
+csim.c (Part A 的骨架代码)
+trans.c (Part B 的骨架代码)
+test-csim (Part A 自动测试脚本)
+test-trans (Part B 自动测试脚本)
+cachelab.{c,h} (评分工具库)

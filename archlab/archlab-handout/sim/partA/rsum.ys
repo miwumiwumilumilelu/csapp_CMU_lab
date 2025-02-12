@@ -1,0 +1,37 @@
+#rsum
+#rsum_list - Recursive version of sum_list
+.pos 0
+    irmovq stack, %rsp  # 初始化栈指针
+    call main           # 调用 main 函数
+    halt                # 程序终止
+
+.align 8
+ele1:
+    .quad 0x00a         # 节点1的值：0x00a (10)
+    .quad e1e2          # 节点1的next指针指向e1e2
+e1e2:
+    .quad 0x0b0         # 节点2的值：0x0b0 (176)
+    .quad e1e3          # 节点2的next指针指向e1e3
+e1e3:
+    .quad 0xc00         # 节点3的值：0xc00 (3072)
+    .quad 0             # 节点3的next指针为NULL
+
+rsum_list:
+    pushq %r12          # 保存被调用者保存寄存器 %r12
+    irmovq $0, %rax     # 初始化返回值 %rax 为 0
+    andq %rdi, %rdi     # 检查 %rdi（当前节点指针）是否为 NULL
+    je end           # 如果为 NULL，跳转到 RETURN
+    mrmovq 0(%rdi), %r12 # 将当前节点的值加载到 %r12
+    mrmovq 8(%rdi), %rdi # 将下一个节点的地址加载到 %rdi
+    call rsum_list      # 递归调用 rsum_list
+    addq %r12, %rax     # 将当前节点的值加到返回值 %rax 中
+end:
+    popq %r12           # 恢复 %r12
+    ret                 # 返回
+
+main:
+    irmovq ele1, %rdi   # 将链表头节点地址传入 %rdi
+    call rsum_list      # 调用 rsum_list
+    ret                 # 返回
+.pos 0x200
+stack:                  # 栈区域起始地址 0x400

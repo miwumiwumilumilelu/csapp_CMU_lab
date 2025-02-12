@@ -1,0 +1,53 @@
+#copy
+#copy_block - Copy src to dest and return xor checksum of src
+
+.pos 0
+    irmovq stack, %rsp  # 初始化栈指针
+    call main           # 调用 main 函数
+    halt                # 程序终止
+
+.align 8
+# Source block
+src:
+    .quad 0x00a         # 源数据块第1个值：0x00a (10)
+    .quad 0x0b0         # 源数据块第2个值：0x0b0 (176)
+    .quad 0xc00         # 源数据块第3个值：0xc00 (3072)
+
+# Destination block
+dest:
+    .quad 0x111         # 目标数据块第1个值：0x111 (初始值)
+    .quad 0x222         # 目标数据块第2个值：0x222 (初始值)
+    .quad 0x333         # 目标数据块第3个值：0x333 (初始值)
+
+copy_block:
+    pushq %r12          # 保存被调用者保存寄存器 %r12
+    pushq %r13          # 保存被调用者保存寄存器 %r13
+    pushq %r14          # 保存被调用者保存寄存器 %r14
+    irmovq $1, %r13     # %r13 = 1（用于递减长度）
+    irmovq $8, %r14     # %r14 = 8（用于指针递增）
+    irmovq $0, %rax     # 初始化返回值 %rax 为 0
+    jmp loop_test       # 跳转到循环条件检查
+loop:
+    mrmovq 0(%rdi), %r12 # 将 *src 加载到 %r12
+    addq %r14, %rdi      # src++
+    rmmovq %r12, 0(%rsi) # *dest = *src
+    addq %r14, %rsi      # dest++
+    xorq %r12, %rax      # result ^= val
+    subq %r13, %rdx      # len--
+loop_test:
+    andq %rdx, %rdx      # 检查 len 是否大于 0
+    jg loop              # 如果 len > 0，继续循环
+    popq %r14            # 恢复 %r14
+    popq %r13            # 恢复 %r13
+    popq %r12            # 恢复 %r12
+    ret                  # 返回
+
+main:
+    irmovq src, %rdi    # 将 src 地址传入 %rdi
+    irmovq dest, %rsi   # 将 dest 地址传入 %rsi
+    irmovq $3, %rdx     # 将长度 3 传入 %rdx
+    call copy_block     # 调用 copy_block
+    ret                 # 返回
+
+.pos 0x300
+stack:                  

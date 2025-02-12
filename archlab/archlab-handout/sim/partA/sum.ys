@@ -1,0 +1,52 @@
+#sum.ys
+#sum_list - Sum the elements of a linked list 
+
+#1.init__stack
+.pos 0   # 指示后续代码从地址0开始
+    irmovq stack, %rsp   # 初始化栈指针指向stack区域(rsp=$stack)
+    call main            # 调用main函数
+    halt                 # 程序终止,确保main返回后终止
+
+
+#2.链表数据定义
+        
+.align 8    # 确保每个节点起始地址按8字节对齐
+ele1:
+    .quad 0x00a         # 节点1的值：0x00a (10)
+    .quad e1e2          # 节点1的next指针指向e1e2
+e1e2:
+    .quad 0x0b0         # 节点2的值：0x0b0 (176)
+    .quad e1e3          # 节点2的next指针指向e1e3
+e1e3:
+    .quad 0xc00         # 节点3的值：0xc00 (3072)
+    .quad 0             # 节点3的next指针为NULL
+#.quad  确保每个节点起始地址按8字节对齐
+
+
+#3.遍历累加
+
+sum_list:
+    irmovq $0, %rax     # 初始化返回值%rax为0
+    jmp end           # 跳转到循环条件检查
+loop:
+    mrmovq 0(%rdi), %rsi # 加载当前节点的值到%rsi
+    addq %rsi, %rax     # 将值累加到%rax
+    mrmovq 8(%rdi), %rsi # 加载next指针到%rsi
+    rrmovq %rsi, %rdi   # 更新%rdi为下一个节点的地址
+end:
+    andq %rdi, %rdi     # 检查%rdi是否为NULL
+    jne loop            # 若非NULL，跳回循环体
+    ret                 # 返回累加结果
+
+
+#4.main
+
+main:
+    irmovq ele1, %rdi   # 将链表头节点地址传入%rdi
+    call sum_list       # 调用sum_list函数
+    ret                 # 返回（最终由halt终止程序）
+
+#5.栈空间分配
+
+.pos 0x100              # 指定栈起始地址0x400,以保证程序数据和栈数据不会冲突 
+stack:                  # stack 标签标记该位置
