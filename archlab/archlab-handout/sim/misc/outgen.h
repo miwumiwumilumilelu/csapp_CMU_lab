@@ -1,5 +1,6 @@
 /* Output generator that ensures no line exceeds specified number of columns */
-
+#include <stdio.h>
+extern FILE *outfile;
 /* Controlling parameters */
 void outgen_init(FILE *outfile, int max_column, int first_indent, int other_indents);
 

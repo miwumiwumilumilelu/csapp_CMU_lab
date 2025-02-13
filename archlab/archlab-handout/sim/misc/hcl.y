@@ -1,4 +1,5 @@
 %{
+#include "outgen.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,7 +13,6 @@ int errcnt = 0;
 
 
 
-FILE *outfile;
 
 int yyparse(void);
 int yylex(void);

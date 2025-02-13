@@ -1,0 +1,122 @@
+----------------------------------------------------------------------
+partB:
+----------------------------------------------------------------------
+对SEQ处理器进行扩展，使其支持iaddq指令
+----------------------------------------------------------------------
+iaddq指令编码为: 
+iaddq V,rB [C][0][F][rB][       V        ]
+----------------------------------------------------------------------
+取指:
+icode:ifun <- M1[PC]
+rA:rB <- M1[PC+1]
+valC <- M8[PC+2]
+valP <- PC+10
+----------------------------------------------------------------------
+译码：
+valB <- R[rB]
+----------------------------------------------------------------------
+执行：
+valE <- valB+valC
+----------------------------------------------------------------------
+访存:
+----------------------------------------------------------------------
+写回:
+R[rB] <- valE
+----------------------------------------------------------------------
+PC:
+PC <- valP
+----------------------------------------------------------------------
+对seq-full.hcl文件中进行修改,使其支持iaddq指令
+因为其中包含了IIADDQ作为instruction,类似于申明函数
+----------------------------------------------------------------------
+在 .hcl 文件中，wordsig 通常用于硬件描述语言（如 Chisel）中定义信号的位宽和名称。它表示一个多位的信号，常用于硬件设计
+----------------------------------------------------------------------
+~~~~~~处为我修改的地方：
+----------------------------------------------------------------------
+取值阶段：
+----------------------------------------------------------------------
+1.instr_valid用来判断是否为合法指令，icode集合里需要加上IAADDQ
+2.need_regids中因为iaddq需要rB寄存器，所以icode集合中加上IAADDQ
+3.need_valC中因为iaddq需要立即数，所以icode集合中加上IAADDQ
+----------------------------------------------------------------------
+译码阶段和写回阶段：
+----------------------------------------------------------------------
+1.srcB中加上IIADDQ,因为iaddq要使用rB寄存器，所以需要设置srcB的源为rB
+2.dstE中加上IIADDQ,计算完的结果valE需要保存到寄存器rB中
+----------------------------------------------------------------------
+word dstE = [
+        icode in { IRRMOVQ } && Cnd : rB;
+        icode in { IIRMOVQ, IOPQ ,IIADDQ} : rB;#~~~~~~
+        icode in { IPUSHQ, IPOPQ, ICALL, IRET } : RRSP;
+        1 : RNONE;  # Don't write any register
+];
+第一个icode是icode 是 IRRMOVQ 且 Cnd 为真
+第二个icode是icode 是 IIRMOVQ、IOPQ 或 IIADDQ 中的任意一个
+
+如果条件满足，选择寄存器 rB 作为目标寄存器 dstE
+----------------------------------------------------------------------
+执行阶段：
+----------------------------------------------------------------------
+1.aluA在valC中加入IIADDQ,iaddq指令需要将valC作为aluA的值
+2.aluB在valB中加入IIADDQ,iaddq指令需要将valB作为aluB的值
+3.set_cc加入IIADDQ,iaddq指令也需要更新CC
+----------------------------------------------------------------------
+因为各种库更新换代,部分源代码失效导致我编译ssim的时候报错了
+
+root@wyhdeepdown:~/works/csapp_CMU_lab/archlab/archlab-handout/sim/seq# make VERS
+ION=full
+# Building the seq-full.hcl version of SEQ
+../misc/hcl2c -n seq-full.hcl <seq-full.hcl >seq-full.c
+/bin/sh: 1: ../misc/hcl2c: not found
+make: *** [Makefile:43: ssim] Error 127
+
+错误信息显示在 ../misc/ 目录下找不到 hcl2c 工具。这个工具用于将 HCL（硬件控制语言）文件（seq-full.hcl）转换为 C 文件（seq-full.c)
+
+cd ../misc/
+
+root@wyhdeepdown:~/works/csapp_CMU_lab/archlab/archlab-handout/sim/misc# make
+gcc -O1 node.c lex.yy.c hcl.tab.c outgen.c -o hcl2c
+/usr/bin/ld: /tmp/ccGydMHA.o:(.bss+0x8): multiple definition of `outfile'; /tmp/ccX5dY6L.o:(.bss+0x18): first defined here
+collect2: error: ld returned 1 exit status
+make: *** [Makefile:41: hcl2c] Error 1
+
+这个错误是由于在链接过程中发现了多个 outfile 变量的定义，导致冲突。通常，这种情况是因为 outfile 变量在多个源文件中被定义为全局变量，而没有使用 extern 关键字来声明外部引用
+用deepseek各种修改
+
+然后又是:
+root@wyhdeepdown:~/works/csapp_CMU_lab/archlab/archlab-handout/sim/seq# make VERS
+ION=full
+# Building the seq-full.hcl version of SEQ
+../misc/hcl2c -n seq-full.hcl <seq-full.hcl >seq-full.c
+gcc -Wall -O2 -isystem /usr/include/tcl8.5 -I../misc -DHAS_GUI -o ssim \
+        seq-full.c ssim.c ../misc/isa.c -L/usr/lib -ltk -ltcl -lm
+ssim.c:18:10: fatal error: tk.h: No such file or directory
+   18 | #include <tk.h>
+      |          ^~~~~~
+compilation terminated.
+make: *** [Makefile:44: ssim] Error 1
+
+如果你不含有Tcl/Tk，方法一需要在Makefile中将对应行注释掉，vim Makefile ,注释7,14,20行
+----------------------------------------------------------------------
+#GUIMODE=-DHAS_GUI
+
+# Modify the following line so that gcc can find the libtcl.so and
+# libtk.so libraries on your system. You may need to use the -L option
+# to tell gcc which directory to look in. Comment this out if you
+# don't have Tcl/Tk.
+
+#TKLIBS=-L/usr/lib -ltk -ltcl
+
+# Modify the following line so that gcc can find the tcl.h and tk.h
+# header files on your system. Comment this out if you don't have
+# Tcl/Tk.
+
+#TKINC=-isystem /usr/include/tcl8.5
+----------------------------------------------------------------------
+方法二安装tcl/tk
+sudo apt-get install tcl8.6-dev tk8.6-dev tcl8.6 tk8.6
+ 842 //extern int matherr();
+ 843 //int *tclDummyMathPtr = (int *) matherr;
+在ssim.c中注释掉这两行
+
+

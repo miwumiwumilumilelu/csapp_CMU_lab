@@ -15,11 +15,9 @@
 #include "sim.h"
 
 #define MAXBUF 1024
-
 #ifdef HAS_GUI
-#include <tk.h>
 #endif /* HAS_GUI */
-
+#include<tk.h>
 #define MAXARGS 128
 #define MAXBUF 1024
 #define TKARGS 3
@@ -841,8 +839,8 @@ void sim_log( const char *format, ... ) {
  **********************/
 
 /* Hack for SunOS */
-extern int matherr();
-int *tclDummyMathPtr = (int *) matherr;
+//extern int matherr();
+//int *tclDummyMathPtr = (int *) matherr;
 
 static char tcl_msg[256];
 
