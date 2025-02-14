@@ -1,0 +1,221 @@
+------------------------------------------------------------------------
+partC:
+------------------------------------------------------------------------
+seq硬件结构:一条指令执行完所有阶段之后，才执行下一条指令
+pipe硬件结构:指令执行完一个阶段后，其状态放入下一个状态寄存器，该阶段的硬件交给下一条指令使用
+Y86-64指令的顺序实现:取指 解码 执行 访存 写回 更新PC
+------------------------------------------------------------------------
+1.PC预测:
+取指阶段完成后，下一条指令是谁
+大部分指令，pc是valP；jmp和call，pc是valC；
+条件转移则需要预测；
+ret的PC要在访存阶段之后才知道，策略是暂停处理新指令。
+2.流水线冒险：
+  （1）数据冒险:
+  （当下条指令会用到当前指令的结果时；由于寄存器的译码和写回在不同阶段，寄存器会发生数据冒险）
+  处理策略：
+  暂停:
+  即将指令阻塞在当前阶段 （如译码阶段，等前面的指令执行完写回之后，才继续运行），方法是插入一个“bubble”，类似nop指令
+  缺点是严重降低了吞吐量
+  转发:
+  将需要的数据直接转发过来，而不是等之前的指令写回
+  （2）转发不能解决 ：加载/使用冒险
+  暂停和转发一起使用，这种方法叫做加载互锁，可以解决加载/使用冒险
+
+  转发和加载互锁可以解决所有数据冒险
+  （3）控制冒险：
+  (在条件转移和ret时，可能发生控制冒险）
+
+   对于ret，其在访存阶段得到valM(PC)，利用bubble暂停后面的指令，等ret访存结束再取指令；
+
+   对于jxx，我们默认选择跳转分支，jxx在执行阶段结束后，我们会得到其cond，知道我们预测是否正确；若不正确，则bubble暂停后面的指令，然后取正确地址的指令
+------------------------------------------------------------------------
+取指fetch：
+## What address should instruction be fetched at
+# 三个源 预测地址 ret返回的地址 预测错误时，jxx指令的下个地址
+word f_pc = [
+        # Mispredicted branch.  Fetch at incremented PC
+        M_icode == IJXX && !M_Cnd : M_valA;
+        # Completion of RET instruction
+        W_icode == IRET : W_valM;
+        # Default: Use predicted value of PC
+        1 : F_predPC;
+];
+
+## Determine icode of fetched instruction
+word f_icode = [
+        imem_error : INOP;
+        1: imem_icode;
+];
+
+# Determine ifun
+word f_ifun = [
+        imem_error : FNONE;
+        1: imem_ifun;
+];
+
+# Is instruction valid?
+bool instr_valid = f_icode in
+        { INOP, IHALT, IRRMOVQ, IIRMOVQ, IRMMOVQ, IMRMOVQ,
+          IOPQ, IJXX, ICALL, IRET, IPUSHQ, IPOPQ };
+
+# Determine status code for fetched instruction
+word f_stat = [
+        imem_error: SADR;
+        !instr_valid : SINS;
+        f_icode == IHALT : SHLT;
+        1 : SAOK;
+];
+
+# Determine ifun
+word f_ifun = [
+        imem_error : FNONE;
+        1: imem_ifun;
+];
+
+# Is instruction valid?
+bool instr_valid = f_icode in
+        { INOP, IHALT, IRRMOVQ, IIRMOVQ, IRMMOVQ, IMRMOVQ,
+          IOPQ, IJXX, ICALL, IRET, IPUSHQ, IPOPQ };
+
+# Determine status code for fetched instruction
+word f_stat = [
+        imem_error: SADR;
+        !instr_valid : SINS;
+        f_icode == IHALT : SHLT;
+        1 : SAOK;
+];
+
+# Does fetched instruction require a regid byte?
+bool need_regids =
+        f_icode in { IRRMOVQ, IOPQ, IPUSHQ, IPOPQ,
+                     IIRMOVQ, IRMMOVQ, IMRMOVQ };
+
+# Does fetched instruction require a constant word?
+bool need_valC =
+        f_icode in { IIRMOVQ, IRMMOVQ, IMRMOVQ, IJXX, ICALL };
+
+# Predict next value of PC
+# 预测地址 两种 大部分指令，pc是valP；jmp和call，pc是valC；
+word f_predPC = [
+        f_icode in { IJXX, ICALL } : f_valC;
+        1 : f_valP;
+];
+
+------------------------------------------------------------------------
+解码decode:
+## What register should be used as the A source?
+word d_srcA = [
+        D_icode in { IRRMOVQ, IRMMOVQ, IOPQ, IPUSHQ  } : D_rA;
+        D_icode in { IPOPQ, IRET } : RRSP;
+        1 : RNONE; # Don't need register
+];
+
+## What register should be used as the B source?
+word d_srcB = [
+        D_icode in { IOPQ, IRMMOVQ, IMRMOVQ  } : D_rB;
+        D_icode in { IPUSHQ, IPOPQ, ICALL, IRET } : RRSP;
+        1 : RNONE;  # Don't need register
+];
+
+## What register should be used as the E destination?
+word d_dstE = [
+        D_icode in { IRRMOVQ, IIRMOVQ, IOPQ} : D_rB;
+        D_icode in { IPUSHQ, IPOPQ, ICALL, IRET } : RRSP;
+        1 : RNONE;  # Don't write any register
+];
+
+## What register should be used as the M destination?
+word d_dstM = [
+        D_icode in { IMRMOVQ, IPOPQ } : D_rA;
+        1 : RNONE;  # Don't write any register
+];
+
+# 下面的转发逻辑比较麻烦
+## What should be the A value?
+## Forward into decode stage for valA
+word d_valA = [
+ #select 合并信号valA和valP
+        D_icode in { ICALL, IJXX } : D_valP; # Use incremented PC
+        d_srcA == e_dstE : e_valE;    # Forward valE from execute
+        d_srcA == M_dstM : m_valM;    # Forward valM from memory
+        d_srcA == M_dstE : M_valE;    # Forward valE from memory
+        d_srcA == W_dstM : W_valM;    # Forward valM from write back
+        d_srcA == W_dstE : W_valE;    # Forward valE from write back
+        1 : d_rvalA;  # Use value read from register file
+];
+
+word d_valB = [
+        d_srcB == e_dstE : e_valE;    # Forward valE from execute
+        d_srcB == M_dstM : m_valM;    # Forward valM from memory
+        d_srcB == M_dstE : M_valE;    # Forward valE from memory
+        d_srcB == W_dstM : W_valM;    # Forward valM from write back
+        d_srcB == W_dstE : W_valE;    # Forward valE from write back
+        1 : d_rvalB;  # Use value read from register file
+  #先考虑上面是否需要转发 如果不涉及转发 则取d_rvalB
+];
+
+------------------------------------------------------------------------
+PIPE流水线控制逻辑
+主要是解决下面几个问题：
+
+1.加载/使用冒险：使用加载互锁解决
+
+2.ret：流水线暂停直至ret写回
+
+3.处理错误的PC预测（jxx） ：取消错误指令，从正确的位置取指
+
+4.异常处理：暂停cnd等程序员可见状态的更新，错误指令写回后，停止执行；期望的结果是，异常指令之前的指令都完成了，异常指令之后的指令不改变程序员可见状态
+
+上述问题的触发条件，如何设置转发、暂停和bubble
+------------------------------------------------------------------------
+cd pipe/
+make VERSION=full
+会报错不含有tk.h文件，此时对Makefile修改将pipe/psim.c第806,807行注释掉
+./psim -t sdriver.yo   //-t是直接测试 -g是gui模式
+
+然后用更多程序测试nocopy.yo
+../misc/yis sdriver.yo                 //两个小测试
+../misc/yis ldriver.yo
+./correctness.pl 
+
+ //更多参数下的测试
+Simulating with instruction set simulator yis
+        ncopy       
+0       OK
+1       OK
+2       OK
+3       
+
+然后测试pipe simulator
+cd ../y86-code/              #对若干程序进行测试
+>make testpsim
+>cd ../ptest; make SIM=../pipe/psim TFLAGS=-i           //对指令集测试  -i 表示包含iaddq
+
+make SIM=../pipe/psim 
+./optest.pl -s ../pipe/psim 
+Simulating with ../pipe/psim
+  All 49 ISA Checks Succeed
+./jtest.pl -s ../pipe/psim 
+Simulating with ../pipe/psim
+  All 64 ISA Checks Succeed
+./ctest.pl -s ../pipe/psim 
+Simulating with ../pipe/psim
+  All 22 ISA Checks Succeed
+./htest.pl -s ../pipe/psim 
+Simulating with ../pipe/psim
+  All 600 ISA Checks Succeed
+  
+> cd ../pipe; ./correctness.pl -p          #对ncopy进行若干参数的测试
+
+计算得分 平均CPI
+./benchmark.pl 
+        ncopy
+0       13
+...
+64      913     14.27
+Average CPE     15.18
+Score   0.0/60.0
+------------------------------------------------------------------------
+开始优化:
+------------------------------------------------------------------------

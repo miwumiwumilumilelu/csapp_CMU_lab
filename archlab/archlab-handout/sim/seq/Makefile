@@ -59,7 +59,3 @@ ssim+: seq+-std.hcl ssim.c sim.h $(MISCDIR)/isa.c $(MISCDIR)/isa.h
 
 clean:
 	rm -f ssim ssim+ seq*-*.c *.o *~ *.exe *.yo *.ys
-
-
-
-
