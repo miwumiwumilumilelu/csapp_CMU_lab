@@ -1,0 +1,48 @@
+# sum.ys: 迭代地计算链表的元素和
+# Name: [你的名字]
+# ID: [你的学号]
+
+.pos 0
+# 程序入口
+	irmovq Stack, %rsp		# 初始化栈指针
+	irmovq src, %rdi		# src第一个参数
+	irmovq dest, %rsi		# 同上
+	irmovq 3, %rdx		    # 同上
+	call copy_block			# 调用 copy_block 函数
+	halt					# 程序结束
+
+
+# 源内存块
+src:
+  .quad 0x00a
+  .quad 0x0b0
+  .quad 0xc00
+# 目标内存块
+dest:
+  .quad 0x111
+  .quad 0x222
+  .quad 0x333
+
+
+copy_block:
+	irmovq 0, %rax			# long result = 0
+loop:
+    andq %rdx, %rdx
+    jle end					# while()
+    mrmovq (%rdi), %r8		# long val = *src
+	irmovq 8, %r9			# %r9 = 8
+    addq %r9, %rdi			# src++
+	rmmovq %r8, (%rsi)		# *dest = val
+	addq %r9, %rsi			# dest++
+	xorq %r8, %rax			# result ^= val
+	irmovq 1, %r9			# %r9 = 1
+    subq %r9, %rdx			# len--
+    jmp loop
+end:
+    ret
+
+
+# 栈空间定义
+.pos 0x1000					# 栈空间从 .pos 0x1000 开始，以保证程序数据和栈数据不会冲突。
+.align 8
+Stack:						# 栈底地址

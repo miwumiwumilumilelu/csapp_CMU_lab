@@ -1,5 +1,6 @@
 ------------------------------------------------------------------------
 partC:
+通过修改ncopy.ys和pipe-full.hcl让ncopy.ys跑的尽可能快
 ------------------------------------------------------------------------
 seq硬件结构:一条指令执行完所有阶段之后，才执行下一条指令
 pipe硬件结构:指令执行完一个阶段后，其状态放入下一个状态寄存器，该阶段的硬件交给下一条指令使用
@@ -169,53 +170,26 @@ PIPE流水线控制逻辑
 
 上述问题的触发条件，如何设置转发、暂停和bubble
 ------------------------------------------------------------------------
+构建新模拟器:这将基于你的 seq-full.hcl 文件生成一个新的 SEQ 模拟器。
 cd pipe/
 make VERSION=full
 会报错不含有tk.h文件，此时对Makefile修改将pipe/psim.c第806,807行注释掉
-./psim -t sdriver.yo   //-t是直接测试 -g是gui模式
+------------------------------------------------------------------------
+测试:
+./ssim -t ../y86-code/asumi.yo 运行简单测试 使用提供的 asumi.yo 文件测试你的实现
 
-然后用更多程序测试nocopy.yo
-../misc/yis sdriver.yo                 //两个小测试
-../misc/yis ldriver.yo
-./correctness.pl 
-
- //更多参数下的测试
-Simulating with instruction set simulator yis
-        ncopy       
-0       OK
-1       OK
-2       OK
-3       
-
-然后测试pipe simulator
-cd ../y86-code/              #对若干程序进行测试
->make testpsim
->cd ../ptest; make SIM=../pipe/psim TFLAGS=-i           //对指令集测试  -i 表示包含iaddq
-
-make SIM=../pipe/psim 
-./optest.pl -s ../pipe/psim 
-Simulating with ../pipe/psim
-  All 49 ISA Checks Succeed
-./jtest.pl -s ../pipe/psim 
-Simulating with ../pipe/psim
-  All 64 ISA Checks Succeed
-./ctest.pl -s ../pipe/psim 
-Simulating with ../pipe/psim
-  All 22 ISA Checks Succeed
-./htest.pl -s ../pipe/psim 
-Simulating with ../pipe/psim
-  All 600 ISA Checks Succeed
-  
-> cd ../pipe; ./correctness.pl -p          #对ncopy进行若干参数的测试
-
-计算得分 平均CPI
-./benchmark.pl 
-        ncopy
-0       13
-...
-64      913     14.27
-Average CPE     15.18
-Score   0.0/60.0
+cd ../y86-code; make testssim
+cd ../ptest; make SIM=../seq/ssim TFLAGS=-i
 ------------------------------------------------------------------------
 开始优化:
+0.init
+0/60 CPE:15.18
+1.依据y86将hcl中添加iaddq指令,并ncopy.ys改为iaddq指令
+0/60 CPE:12.70
+2.循环展开:
+%rax默认为0，可以去掉xorq %rax,%rax
+n421:先展开（8-10）次循环，剩下的展开4次循环，之后2次，最后1次
+通过判断rdx选择执行的路径组合，10 4 2 1展开
+56.2/60 CPE:7.69
 ------------------------------------------------------------------------
+

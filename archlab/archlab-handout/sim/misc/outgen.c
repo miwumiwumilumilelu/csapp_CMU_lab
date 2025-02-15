@@ -5,16 +5,17 @@
 
 #include "outgen.h"
 /* Output generator that ensures no line exceeds specified number of columns */
-FILE *outfile;
+
 #define STRING_LENGTH 1024
 
+FILE *outfile = NULL;
 int max_column = 80;
 int first_indent = 4;
 int other_indents = 2;
 int cur_pos = 0;
 int indent = 0;
 
-FILE *outfile;
+
 /* Controlling parameters */
 void outgen_init(FILE *arg_outfile, int arg_max_column, int arg_first_indent, int arg_other_indents) {
   outfile = arg_outfile;

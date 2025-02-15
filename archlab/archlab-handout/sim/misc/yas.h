@@ -8,5 +8,6 @@ void add_num(long long);
 void fail(char *msg);
 unsigned long long atollh(const char *);
 
+
 /* Current line number */
-extern int lineno;
+int lineno;

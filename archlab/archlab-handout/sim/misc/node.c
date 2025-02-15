@@ -1,6 +1,6 @@
 /* Functions to generate C or Verilog code from HCL */
 /* This file maintains a parse tree representation of expressions */
-#include "outgen.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +34,7 @@ int arg_cnt = 0;
 #endif
 
 
+extern FILE *outfile;
 
 /*
  * usage - print helpful diagnostic information
