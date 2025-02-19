@@ -1,5 +1,10 @@
 #include "cachelab.h"
-
+#include <unistd.h>
+#include <getopt.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <limits.h>
 /*
   用cache表示一个缓存 typedef struct cache
   用set，E(lines)，b来找具体cache_fuck,每个set包含多个E，每个E包含多个块
@@ -7,19 +12,24 @@
   用二维数组的思路去初始化cache，每一个缓存类似于一个二位数组，数组的每一个元素就是缓存中的具体fuck
 */
 
-typedef struct cache{
+typedef struct cache_fuck
+{
+    int valid;     //有效位
+    int tag;       //标记位 
+    int time_tamp;   //时间戳                    
+} Cache_fuck;
+
+typedef struct cache_{
     int S;
     int E;
     int B;
     Cache_fuck **fuck;
 }Cache;
 
-typedef struct Cache_fuck
-{
-    int valid;     //有效位
-    int tag;       //标记位
-    int time_tamp; //时间戳
-} Cache_fuck;
+int hit_count = 0, miss_count = 0, eviction_count = 0; // 记录冲突不命中、缓存不命中
+int verbose = 0;                                       //是否打印详细信息
+char t[1000];
+Cache *cache = NULL;
 
 void Init_Cache(int s, int E, int b)
 {
@@ -42,6 +52,17 @@ void Init_Cache(int s, int E, int b)
     }
 }
 
+void free_Cache()
+{
+    int S = cache->S;
+    for (int i = 0; i < S; i++)
+    {
+        free(cache->fuck[i]);
+    }
+    free(cache->fuck);
+    free(cache);
+}
+
 /*
 -----------------------
 LRU（Least Recently Used，最近最少使用）是一种常用的缓存替换策略。它的核心思想是：当缓存空间不足时，优先淘汰最久未被使用的数据。LRU 算法基于时间局部性原理，即最近被访问的数据很可能在不久的将来再次被访问。
@@ -61,6 +82,7 @@ LRU 算法可以通过多种数据结构实现，常见的实现方式包括：
 哈希表用于快速查找数据。
 -----------------------
 */
+
 void update(int i, int op_s, int op_tag){
     cache->fuck[op_s][i].valid=1;
     cache->fuck[op_s][i].tag = op_tag;
@@ -88,13 +110,126 @@ int find_LRU(int op_s)
     return max_index;
 }
 
+//先判断 miss 或 hit
+int get_index(int op_s,int op_tag)
+{
+	for (int i = 0;i < cache->E; i++)
+	{
+		if(cache->fuck[op_s][i].valid && cache->fuck[op_s][i].tag == op_tag)
+			return i;
+	}//lets fucking hit it
+	return -1;
+}
 
+//当接收到-1后,两种情况:
+//所有行都满了。那么就要用到上面得 LRU 进行选择驱逐
+//组中有空行，只不过还未操作过，有效位为0，找到这个空行即可
+//因此，设计一个判满的或找到指定空位函数:
+int is_full(int op_s)
+{
+	for(int i = 0 ;i <cache->E ;i++)
+	{
+		if(cache->fuck[op_s][i].valid==0)
+			return i;
+	}
+	return -1;
+}
+
+//扫描完成后得到i进行LRU更新函数的调用
+void update_info(int op_tag, int op_s)
+{
+    int index = get_index(op_s, op_tag);
+    if (index == -1)
+    {
+        miss_count++;
+        if (verbose)
+            printf("miss ");
+        int i = is_full(op_s);
+        if(i==-1){
+            eviction_count++;
+            if(verbose) printf("eviction");
+            i = find_LRU(op_s);
+        }
+        update(i,op_s,op_tag);
+    }
+    else{
+        hit_count++;
+        if(verbose)
+            printf("hit");
+        update(index,op_s,op_tag);    
+    }
+}
+
+//以上是主要架构代码
+//----------------------------------------------------------------------
+
+/*
+ 设计的数据结构解决了对 Cache 的操作问题，LRU 时间戳的实现解决了核心的驱逐问题，缓存扫描解决了对块中哪一列进行操作的问题，而应该对哪一块进行操作呢？接下来要解决的就是指令的解析问题了
+*/
+
+
+//指令解析:
+//输入数据为operation address, size的形式，operation很容易获取，重要的是从address中分别获取我们需要的s和tag，address结构如下：
+//int op_tag = address >> (s + b);
+//int op_s = (address >> b) & ((unsigned)(-1) >> (8 * sizeof(unsigned) - s));
+
+
+//则可以得get_trace 函数:
+void get_trace(int s, int E, int b)
+{
+    FILE *pFile;
+    pFile = fopen(t, "r");
+    if (pFile == NULL)
+    {
+        exit(-1);
+    }
+    char identifier;
+    unsigned address;
+    int size;
+    // Reading lines like " M 20,1" or "L 19,3"
+    while (fscanf(pFile, " %c %x,%d", &identifier, &address, &size) > 0) // I读不进来,忽略---size没啥用
+    {
+        //想办法先得到标记位和组序号
+        int op_tag = address >> (s + b);
+        int op_s = (address >> b) & ((unsigned)(-1) >> (8 * sizeof(unsigned) - s));
+        switch (identifier)
+        {
+        case 'M': //一次存储一次加载
+            update_info(op_tag, op_s);
+            update_info(op_tag, op_s);
+            break;
+        case 'L':
+            update_info(op_tag, op_s);
+            break;
+        case 'S':
+            update_info(op_tag, op_s);
+            break;
+        }
+    }
+    fclose(pFile);
+}
+
+void print_help()
+{
+    printf("** A Cache Simulator by Deconx\n");
+    printf("Usage: ./csim-ref [-hv] -s <num> -E <num> -b <num> -t <file>\n");
+    printf("Options:\n");
+    printf("-h         Print this help message.\n");
+    printf("-v         Optional verbose flag.\n");
+    printf("-s <num>   Number of set index bits.\n");
+    printf("-E <num>   Number of lines per set.\n");
+    printf("-b <num>   Number of block offset bits.\n");
+    printf("-t <file>  Trace file.\n\n\n");
+    printf("Examples:\n");
+    printf("linux>  ./csim -s 4 -E 1 -b 4 -t traces/yi.trace\n");
+    printf("linux>  ./csim -v -s 8 -E 2 -b 4 -t traces/yi.trace\n");
+}
 
 /*获取命令行参数*/
 //我们使用getopt()函数来获取命令行参数的字符串形式，
 //然后用atoi()转换为要用的参数，
 //最后用switch语句跳转到对应功能块
-int main()
+int main(int argc, char *argv[])
 {
     char opt;
     int s, E, b;
@@ -130,9 +265,14 @@ int main()
             exit(-1);
         }
     }
-    Init_Cache(s, E, b);
+    Init_Cache(s, E, b); //初始化一个cache
     get_trace(s, E, b);
     free_Cache();
+    // printSummary(hit_count, miss_count, eviction_count)
     printSummary(hit_count, miss_count, eviction_count);
     return 0;
 }
+
+//:wq
+//make clean
+//make && ./test-csim
