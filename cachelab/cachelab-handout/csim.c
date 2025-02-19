@@ -121,7 +121,7 @@ int get_index(int op_s,int op_tag)
 	return -1;
 }
 
-//当接收到-1后,两种情况:
+//当接收到-1后 miss时,两种情况: 直接填充或者驱逐老的再填充
 //所有行都满了。那么就要用到上面得 LRU 进行选择驱逐
 //组中有空行，只不过还未操作过，有效位为0，找到这个空行即可
 //因此，设计一个判满的或找到指定空位函数:
@@ -141,21 +141,16 @@ void update_info(int op_tag, int op_s)
     int index = get_index(op_s, op_tag);
     if (index == -1)
     {
-        miss_count++;
-        if (verbose)
-            printf("miss ");
+	miss_count++;
         int i = is_full(op_s);
         if(i==-1){
             eviction_count++;
-            if(verbose) printf("eviction");
             i = find_LRU(op_s);
         }
         update(i,op_s,op_tag);
     }
     else{
         hit_count++;
-        if(verbose)
-            printf("hit");
         update(index,op_s,op_tag);    
     }
 }
@@ -184,7 +179,7 @@ void get_trace(int s, int E, int b)
         exit(-1);
     }
     char identifier;
-    unsigned address;
+    unsigned address;// cache结构:  tag set block ! ! !
     int size;
     // Reading lines like " M 20,1" or "L 19,3"
     while (fscanf(pFile, " %c %x,%d", &identifier, &address, &size) > 0) // I读不进来,忽略---size没啥用
@@ -209,22 +204,6 @@ void get_trace(int s, int E, int b)
     fclose(pFile);
 }
 
-void print_help()
-{
-    printf("** A Cache Simulator by Deconx\n");
-    printf("Usage: ./csim-ref [-hv] -s <num> -E <num> -b <num> -t <file>\n");
-    printf("Options:\n");
-    printf("-h         Print this help message.\n");
-    printf("-v         Optional verbose flag.\n");
-    printf("-s <num>   Number of set index bits.\n");
-    printf("-E <num>   Number of lines per set.\n");
-    printf("-b <num>   Number of block offset bits.\n");
-    printf("-t <file>  Trace file.\n\n\n");
-    printf("Examples:\n");
-    printf("linux>  ./csim -s 4 -E 1 -b 4 -t traces/yi.trace\n");
-    printf("linux>  ./csim -v -s 8 -E 2 -b 4 -t traces/yi.trace\n");
-}
-
 /*获取命令行参数*/
 //我们使用getopt()函数来获取命令行参数的字符串形式，
 //然后用atoi()转换为要用的参数，
@@ -239,14 +218,15 @@ int main(int argc, char *argv[])
      * b:B=2^b每个缓冲块的字节数
      */
     while (-1 != (opt = getopt(argc, argv, "hvs:E:b:t:")))
+//getopt 是一个用于解析命令行参数的函数，常见于 Unix/Linux 系统的脚本和程序中。它帮助开发者处理命令行输入，提取选项和参数
     {
         switch (opt)
         {
         case 'h':
-            print_help();
             exit(0);
         case 'v':
-            verbose = 1;
+            //verbose = 1;
+	    //此时读者要查看具体内存调用过程，此时需要对update_info函数进行更改
             break;
         case 's':
             s = atoi(optarg);
@@ -261,14 +241,12 @@ int main(int argc, char *argv[])
             strcpy(t, optarg);
             break;
         default:
-            print_help();
             exit(-1);
         }
     }
     Init_Cache(s, E, b); //初始化一个cache
     get_trace(s, E, b);
     free_Cache();
-    // printSummary(hit_count, miss_count, eviction_count)
     printSummary(hit_count, miss_count, eviction_count);
     return 0;
 }
