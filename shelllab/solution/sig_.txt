@@ -1,0 +1,165 @@
+--------------------------------------------------------------------
+/*
+ *sigint_handler - The kernel sends a SIGINT to the shell whenver the
+ *    user types ctrl-c at the keyboard.  Catch it and send it along
+ *    to the foreground job.
+ */
+//终止进程
+void sigint_handler(int sig)
+{
+        pid_t pid = fgpid(jobs);
+        if(pid == 0) return ;
+        kill(-pid ,sig);
+}
+--------------------------------------------------------------------
+sigint_handler 处理 SIGINT 信号（由 Ctrl+C 触发），通常导致前台进程终止。
+SIGINT 会终止进程，Shell需将作业状态标记为终止并从作业列表中移除。
+
+fgpid(jobs) 是一个函数调用，目的是从全局的 jobs 列表（保存所有作业信息的结构）中，获取当前前台作业的进程组ID（Process Group ID）fgpid 函数会遍历 jobs 列表，找到状态为 FG（Foreground）的作业，并返回它的进程组ID
+pid_t pid 是接收返回值的变量，类型为 pid_t（本质是整数），用来表示进程或进程组ID
+
+如果 fgpid 返回 0，说明当前 没有前台作业在运行（例如用户输入 Ctrl+C 时，前台已经没有任何程序在执行）。
+此时直接 return，不执行后续的 kill 操作，因为没有任何进程需要发送信号。
+--------------------------------------------------------------------
+/*
+ * sigtstp_handler - The kernel sends a SIGTSTP to the shell whenever
+ *     the user types ctrl-z at the keyboard. Catch it and suspend the
+ *     foreground job by sending it a SIGTSTP.
+ */
+//暂停进程
+void sigtstp_handler(int sig)
+{
+        pid_t pid =fgpid(jobs);
+        if(pid == 0) return ;
+        kill(-pid ,sig);
+}
+--------------------------------------------------------------------
+sigtstp_handler 处理 SIGTSTP 信号（由 Ctrl+Z 触发），使前台进程暂停并转入后台。
+SIGTSTP 暂停进程，Shell需将作业状态标记为停止，保留在作业列表以便后续恢复。
+--------------------------------------------------------------------
+/*
+ * sigchld_handler - The kernel sends a SIGCHLD to the shell whenever
+ *     a child job terminates (becomes a zombie), or stops because it
+ *     received a SIGSTOP or SIGTSTP signal. The handler reaps all
+ *     available zombie children, but doesn't wait for any other
+ *     currently running children to terminate.
+ */
+//当子进程终止或停止时，内核会发送这个信号给父进程。
+//代码的主要逻辑是在一个循环中使用waitpid来回收子进程，并根据不同的状态执行相应的操作。
+void sigchld_handler(int sig)
+{
+        int oldErrno = errno;
+        pid_t pid;
+        int status;
+        while((pid = waitpid(-1,&status,WNOHANG | WUNTRACE))>0){
+                //enter here means that one of child has changed status
+                if(WIFEXITED(status)){
+                        //exit normally
+                        //exit(0) , exit(1)
+                        deletejob(jobs, pid);
+                }
+                else if(WIFSIGNALED(status)){
+                        //terminated by signals
+                        int jid= pid2jid(pid);
+                        printf("Job [%d] (%d) terminated by signals %d\n",jid, pid, WTERMSIG(status));
+                        deletejob(jobs, pid);
+                }
+                else if(WIFSTOPPED(status)){
+                        //stop
+                        struct job_t* job =getjobpid(jobs,pid);
+                        job ->status =ST;
+                        int jid= pid2jid(pid);
+                        printf("Job [%d] (%d) stopped by signals %d\n",jid, pid, WSTOPSIG(status));
+                }
+                // else continus,dont worry
+        }
+        errno = olderrno;
+    return;
+}
+--------------------------------------------------------------------
+通过man waitpid 查看相关宏定义信息来做不同状态的option
+
+WNOHANG	非阻塞模式：若没有子进程退出，waitpid 立即返回0，不阻塞等待。
+WUNTRACED	报告已停止（但未被跟踪）的子进程状态（如被 SIGTSTP 暂停）。
+WIFEXITED	若子进程正常退出（通过 exit 或 return）返回真。
+WEXITSTATUS	若 WIFEXITED 为真，提取子进程的退出状态码（如 exit(3) 返回3）。
+WIFSIGNALED	若子进程因未被捕获的信号终止（如 SIGKILL）返回真。
+WTERMSIG	若 WIFSIGNALED 为真，提取导致终止的信号编号（如 SIGKILL=9）。
+WIFSTOPPED	若子进程被信号暂停（如 SIGTSTP）返回真。
+WSTOPSIG	若 WIFSTOPPED 为真，提取导致暂停的信号编号（如 SIGTSTP=20）。
+--------------------------------------------------------------------
+何时触发：
+当Shell的子进程（作业）发生以下事件时，内核会发送SIGCHLD信号给Shell：
+子进程终止（正常退出或被信号杀死）。
+子进程被暂停（例如收到 SIGTSTP、SIGSTOP 等信号）。
+
+核心任务：
+回收僵尸进程：通过 waitpid 获取已终止子进程的状态信息，避免僵尸进程残留。
+更新作业状态：根据子进程的退出原因（正常退出、被信号终止、被信号暂停），更新Shell维护的作业列表（jobs），并打印相关信息。
+--------------------------------------------------------------------
+保存和恢复 errno:
+
+int oldErrno = errno;  // 保存原始的errno
+// ...（后续代码）
+errno = oldErrno;      // 恢复errno
+return;
+
+作用：errno 是全局变量，保存最近一次系统调用的错误码。在信号处理函数中修改 errno 可能影响主程序的错误处理逻辑，因此需要保存并恢复。
+--------------------------------------------------------------------
+waitpid 循环回收子进程:
+
+while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
+    // 处理子进程状态变化
+}
+
+-1：等待任意子进程;
+题目要求:but doesn't wait for any other currently running children to terminate.
+则有：
+WNOHANG：非阻塞模式。如果没有子进程状态变化，立即返回0，而不是阻塞等待。
+WUNTRACED：报告已停止（但未被跟踪，如通过 ptrace）的子进程状态。
+
+返回值：
+>0：成功回收的子进程PID。
+0：没有子进程状态变化。
+-1：错误（例如无子进程）。
+
+循环目的：一次性回收所有已终止或暂停的子进程，避免遗漏僵尸进程。
+--------------------------------------------------------------------
+处理子进程状态:
+
+(1) 子进程正常退出:
+if (WIFEXITED(status)) {
+    deletejob(jobs, pid);
+}
+从作业列表jobs中删除作业即进程即可
+
+(2) 子进程被信号终止：
+else if (WIFSIGNALED(status)) {
+    int jid = pid2jid(pid);
+    printf("Job [%d] (%d) terminated by signals %d\n", jid, pid, WTERMSIG(status));
+    deletejob(jobs, pid);
+}
+因未被捕获的信号而终止（例如 kill -9 PID）WIFSIGNALED(status)
+那么提取并输出导致终止的信号编号（如 SIGKILL=9) WTERMSIG(status)
+打印终止信息并从作业列表中删除作业
+
+(3) 子进程被信号暂停:
+else if (WIFSTOPPED(status)) {
+    struct job_t* job = getjobpid(jobs, pid);
+    job->status = ST;  // ST表示停止状态
+    int jid = pid2jid(pid);
+    printf("Job [%d] (%d) stopped by signals %d\n", jid, pid, WSTOPSIG(status));
+}
+WIFSTOPPED(status)：检查子进程是否被信号暂停（例如 Ctrl+Z 发送 SIGTSTP）
+同上
+更新作业状态为 ST（停止），并打印信息（作业仍保留在列表中，可通过 fg/bg 恢复)
+--------------------------------------------------------------------
+补充
+pid2jid(pid) 函数的作用:
+在 Shell 的作业管理系统中，每个前台或后台运行的作业（例如 sleep 100 &）会被分配一个唯一的 作业ID（JID），通常是递增的整数
+一个作业可能包含多个进程（例如通过管道连接的 ls | grep foo），这些进程属于同一个 进程组（Process Group），进程组ID（PGID）通常是作业中第一个进程的 PID
+功能：将进程的 PID（进程ID） 转换为 JID（作业ID）
+若进程 pid=1234 属于作业 JID=1，则 pid2jid(1234) 返回 1
+
+最后输出：Job [1] (1234)  stopped by signals 导致暂停的信号编号
+--------------------------------------------------------------------

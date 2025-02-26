@@ -164,7 +164,7 @@ int main(int argc, char **argv)
  * when we type ctrl-c (ctrl-z) at the keyboard.  
 */
 void eval(char *cmdline) 
-{
+{	
     return;
 }
 
@@ -263,6 +263,32 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
+	int oldErrno = errno;
+	pid_t pid;
+	int status;
+	while((pid = waitpid(-1,&status,WNOHANG | WUNTRACE))>0){
+		//enter here means that one of child has changed status
+		if(WIFEXITED(status)){
+			//exit normally
+			//exit(0) , exit(1)
+			deletejob(jobs, pid);
+		}
+		else if(WIFSIGNALED(status)){
+			//terminated by signals
+			int jid= pid2jid(pid);
+			printf("Job [%d] (%d) terminated by signals %d\n",jid, pid, WTERMSIG(status));
+			deletejob(jobs, pid);
+		}
+		else if(WIFSTOPPED(status)){
+			//stop
+		        struct job_t* job =getjobpid(jobs,pid);
+			job ->status =ST;
+			int jid= pid2jid(pid);
+			printf("Job [%d] (%d) stopped by signals %d\n",jid, pid, WSTOPSIG(status));
+		}
+		// else continus,dont worry
+	}
+	errno = olderrno;
     return;
 }
 
@@ -273,7 +299,9 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
-    return;
+	pid_t pid = fgpid(jobs);
+	if(pid == 0) return ;
+	kill(-pid ,sig);
 }
 
 /*
@@ -283,7 +311,9 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
-    return;
+	pid_t pid =fgpid(jobs);
+	if(pid == 0) return ;
+	kill(-pid ,sig);
 }
 
 /*********************
