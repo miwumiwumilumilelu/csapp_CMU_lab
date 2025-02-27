@@ -1,0 +1,125 @@
+--------------------------------------------------------------------
+/* 
+ * waitfg - Block until process pid is no longer the foreground process
+ */
+void waitfg(pid_t pid)
+{
+    //waitfg 函数的作用是阻塞当前进程，直到指定的进程 pid 不再作为前台进程运行,也就是等待pid进程执行终止或转为后台进程
+    struct job_t* job= getjobpid(jobs,pid);
+    if(job == 0){
+        return;
+    }
+    while(fgpid(jobs)==pid){
+	//空循环
+    }
+}
+--------------------------------------------------------------------
+fgpid(jobs) 返回当前前台进程的 PID。
+循环持续检查前台进程是否为 pid，若是则空转（忙等待），否则退出循环。
+--------------------------------------------------------------------
+* 
+ * builtin_cmd - If the user has typed a built-in command then execute
+ *    it immediately.  
+ */
+int builtin_cmd(char **argv) 
+{
+    // 检查空指针
+    if (argv == NULL || argv[0] == NULL) {
+        return 0;
+    }
+    if(strcmp(argv[0],"quit")==0){
+        exit(0);
+    }
+    else if(strcmp(argv[0],"jobs")==0){
+        listjobs(jobs);
+        return 1;
+    }
+    else if(strcmp(argv[0],"&")==0){
+        return 1;
+    }
+    else if(strcmp(argv[0],"bg")==0 | strcmp(argv[0],"fg")==0){
+        do_bgfg(argv);
+        return 1;
+    }
+    return 0;     /* not a builtin command */
+}
+--------------------------------------------------------------------
+strcmp(A,B)==0 则说明A，B相等，注意带""
+注意对空指针的判断，以免strcmp不到导致程序崩溃
+注意加上return的返回操作
+--------------------------------------------------------------------
+/* 
+ * do_bgfg - Execute the builtin bg and fg commands
+ */
+void do_bgfg(char **argv) 
+{
+    struct job_t *job;
+    char *tmp;
+    int jid;
+    pid_t pid;
+
+    tmp = argv[1];
+    
+    // if id does not exist
+    if(tmp == NULL) {
+        printf("%s command requires PID or %%jobid argument\n", argv[0]);
+        return;
+    }
+    
+    // if it is a jid
+    if(tmp[0] == '%') {  
+        jid = atoi(&tmp[1]); 
+        //get job
+        job = getjobjid(jobs, jid);
+        if(job == NULL){  
+            printf("%s: No such job\n", tmp);  
+            return;  
+        }else{
+            //get the pid if a valid job for later to kill
+            pid = job->pid;
+        }
+    } 
+    // if it is a pid
+    else if(isdigit(tmp[0])) { 
+        //get pid
+        pid = atoi(tmp); 
+        //get job 
+        job = getjobpid(jobs, pid); 
+        if(job == NULL){  
+            printf("(%d): No such process\n", pid);  
+            return;  
+        }  
+    }  
+    else {
+        printf("%s: argument must be a PID or %%jobid\n", argv[0]);
+        return;
+    }
+    //kill for each time
+    kill(-pid, SIGCONT);
+    
+    if(!strcmp("fg", argv[0])) {
+        //wait for fg
+        job->state = FG;
+        waitfg(job->pid);
+    } 
+    else{
+        //print for bg
+        printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+        job->state = BG;
+    } 
+}
+--------------------------------------------------------------------
+do_bgfg 用于处理 Shell 内置的 bg（后台继续运行作业）和 fg（前台恢复作业）命令，核心逻辑如下：
+解析用户输入的参数（PID 或 JID），找到对应的作业。
+向作业发送 SIGCONT 信号，恢复其运行。
+根据命令类型（bg/fg）更新作业状态，并执行等待（fg）或输出信息（bg）。
+
+ JID 格式：%<数字>
+ PID 格式：数字
+
+kill(-pid, SIGCONT);向所有作业的所有进程组发送 SIGCONT 信号，恢复其运行（无论之前是停止还是后台运行）,确保作业内所有进程恢复
+
+fg:将作业状态设为前台（FG），调用 waitfg 阻塞等待作业完成
+bg:输出作业信息（JID、PID、命令行），将状态设为后台（BG）
+--------------------------------------------------------------------
+

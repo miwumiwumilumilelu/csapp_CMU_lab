@@ -231,6 +231,24 @@ int parseline(const char *cmdline, char **argv)
  */
 int builtin_cmd(char **argv) 
 {
+    // 检查空指针
+    if (argv == NULL || argv[0] == NULL) {
+        return 0;
+    }
+    if(strcmp(argv[0],"quit")==0){
+        exit(0);
+    }
+    else if(strcmp(argv[0],"jobs")==0){
+        listjobs(jobs);
+        return 1;
+    }
+    else if(strcmp(argv[0],"&")==0){
+        return 1;
+    }
+    else if(strcmp(argv[0],"bg")==0 | strcmp(argv[0],"fg")==0){
+        do_bgfg(argv);
+        return 1;
+    }
     return 0;     /* not a builtin command */
 }
 
@@ -239,7 +257,60 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
-    return;
+    struct job_t *job;
+    char *tmp;
+    int jid;
+    pid_t pid;
+
+    tmp = argv[1];
+    
+    // if id does not exist
+    if(tmp == NULL) {
+        printf("%s command requires PID or %%jobid argument\n", argv[0]);
+        return;
+    }
+    
+    // if it is a jid
+    if(tmp[0] == '%') {  
+        jid = atoi(&tmp[1]); 
+        //get job
+        job = getjobjid(jobs, jid);
+        if(job == NULL){  
+            printf("%s: No such job\n", tmp);  
+            return;  
+        }else{
+            //get the pid if a valid job for later to kill
+            pid = job->pid;
+        }
+    } 
+    // if it is a pid
+    else if(isdigit(tmp[0])) { 
+        //get pid
+        pid = atoi(tmp); 
+        //get job 
+        job = getjobpid(jobs, pid); 
+        if(job == NULL){  
+            printf("(%d): No such process\n", pid);  
+            return;  
+        }  
+    }  
+    else {
+        printf("%s: argument must be a PID or %%jobid\n", argv[0]);
+        return;
+    }
+    //kill for each time
+    kill(-pid, SIGCONT);
+    
+    if(!strcmp("fg", argv[0])) {
+        //wait for fg
+        job->state = FG;
+        waitfg(job->pid);
+    } 
+    else{
+        //print for bg
+        printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+        job->state = BG;
+    } 
 }
 
 /* 
@@ -247,7 +318,14 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
-    return;
+    //waitfg 函数的作用是阻塞当前进程，直到指定的进程 pid 不再作为前台进程运行,也就是等待pid进程执行终止或转为后台进程
+    struct job_t* job= getjobpid(jobs,pid);
+    if(job == 0){
+        return;
+    }
+    while(fgpid(jobs)==pid){
+        //空循环
+    }
 }
 
 /*****************
