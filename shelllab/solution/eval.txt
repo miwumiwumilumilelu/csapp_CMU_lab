@@ -1,4 +1,193 @@
 -----------------------------------------------------------
 eval:
 -----------------------------------------------------------
+/* 
+ * eval - Evaluate the command line that the user has just typed in
+ * 
+ * If the user has requested a built-in command (quit, jobs, bg or fg)
+ * then execute it immediately. Otherwise, fork a child process and
+ * run the job in the context of the child. If the job is running in
+ * the foreground, wait for it to terminate and then return.  Note:
+ * each child process must have a unique process group ID so that our
+ * background children don't receive SIGINT (SIGTSTP) from the kernel
+ * when we type ctrl-c (ctrl-z) at the keyboard.  
+*/
+void eval(char *cmdline) 
+{	
+    char *argv[MAXARGS];
+    //int to record for bg   
+    int bg;         
+    pid_t pid;      
+    sigset_t mask;
+    
+    // parse the line
+    bg = parseline(cmdline, argv);
+    //check if valid builtin_cmd
+    if(!builtin_cmd(argv)) { 
+        
+        // blocking first
+        sigemptyset(&mask);
+        sigaddset(&mask, SIGCHLD);
+        sigprocmask(SIG_BLOCK, &mask, NULL);
+        // forking
+        if((pid = fork()) < 0){
+            unix_error("forking error");
+        }
+        // child
+        else if(pid == 0) {
+            sigprocmask(SIG_UNBLOCK, &mask, NULL);
+            setpgid(0, 0);
+            //check if command is there
+            if(execvp(argv[0], argv) < 0) {
+                printf("%s: Command not found\n", argv[0]);
+                exit(1);
+            }
+        } 
+        // parent add job first
+        else {
+            if(!bg){
+                addjob(jobs, pid, FG, cmdline);
+            }
+            else {
+                addjob(jobs, pid, BG, cmdline);
+            }
+            sigprocmask(SIG_UNBLOCK, &mask, NULL);
+            
+            //if bg/fg
+            if (!bg){
+                //wait for fg
+                waitfg(pid);
+            } 
+            else {
+                //print for bg
+                printf("[%d] (%d) %s", pid2jid(pid), pid, cmdline);
+            }
+        }
+    }
+}
+-----------------------------------------------------------
+eval 函数是 shell 程序的核心，负责解析和执行用户输入的命令
+-----------------------------------------------------------
+void eval(char *cmdline) {
+    char *argv[MAXARGS];  // 存储解析后的命令行参数
+    int bg;               // 标记是否为后台任务（1=后台，0=前台）
+    pid_t pid;            // 子进程的进程ID
+    sigset_t mask;        // 信号屏蔽字，用于阻塞信号
+    
+    bg = parseline(cmdline, argv);
+    //...
+}
 
+parseline 函数:
+将输入的 cmdline 拆解为 argv 数组（类似 main 函数的参数）。
+检查命令是否以 & 结尾，返回 bg 标记（1=后台，0=前台）。
+-----------------------------------------------------------
+if (!builtin_cmd(argv)) {
+    // 如果不是内置命令，继续处理外部命令
+    // ...
+}
+
+处理内置命令
+检查 argv[0] 是否是内置命令（如 quit, jobs, bg, fg）。
+如果是内置命令，直接执行并返回 1；否则返回 0。
+-----------------------------------------------------------
+处理外部命令:
+-----------------------------------------------------------
+如果命令是外部程序（如 ls, sleep），需要创建子进程执行
+-----------------------------------------------------------
+阻塞信号，防止竞争:
+
+sigemptyset(&mask);
+sigaddset(&mask, SIGCHLD);
+sigprocmask(SIG_BLOCK, &mask, NULL);
+
+在 fork 前阻塞 SIGCHLD 信号，防止子进程在父进程准备好前终止。
+避免父进程在添加作业到 jobs 列表前处理 SIGCHLD 信号，导致作业管理错误。
+-----------------------------------------------------------
+创建子进程:
+
+if ((pid = fork()) < 0) {
+    unix_error("forking error");
+} else if (pid == 0) {
+    // 子进程代码
+} else {
+    // 父进程代码
+}
+
+=0: 子进程执行分支
+>0: 父进程执行分支
+-----------------------------------------------------------
+子进程的执行流程:
+// 子进程代码
+
+sigprocmask(SIG_UNBLOCK, &mask, NULL); // 解除SIGCHLD阻塞
+setpgid(0, 0);                        // 创建新的进程组
+if (execvp(argv[0], argv) < 0) {       // 执行外部命令
+    printf("%s: Command not found\n", argv[0]);
+    exit(1);
+}
+
+解除信号阻塞:
+子进程继承父进程的信号屏蔽，需解除 SIGCHLD 阻塞，确保新程序能正常处理信号。
+
+进程组设置:
+setpgid(0, 0) 将子进程的进程组 ID 设为自身 PID，使其成为新进程组的组长。
+避免后台作业接收来自终端的信号（如 Ctrl+C）。
+
+执行命令:
+execvp 加载并执行外部命令。若失败（如命令不存在），子进程打印错误并退出。
+-----------------------------------------------------------
+父进程的执行流程:
+//父进程代码
+
+if (!bg) {
+    addjob(jobs, pid, FG, cmdline); // 添加前台作业
+} else {
+    addjob(jobs, pid, BG, cmdline); // 添加后台作业
+}
+sigprocmask(SIG_UNBLOCK, &mask, NULL); // 解除SIGCHLD阻塞
+
+addjob 函数:
+将新作业添加到全局 jobs 列表，记录其 PID、状态（前台 FG 或后台 BG）和命令行字符串。
+
+解除信号阻塞:
+确保在作业添加完成后，父进程可以接收 SIGCHLD 信号。
+-----------------------------------------------------------
+处理前台/后台任务:
+if (!bg) {
+    waitfg(pid); // 等待前台作业完成
+} else {
+    printf("[%d] (%d) %s", pid2jid(pid), pid, cmdline); // 打印后台作业信息
+}
+-----------------------------------------------------------
+关键细节与注意事项
+1. 信号处理与竞争条件
+为什么阻塞 SIGCHLD？
+防止子进程在父进程调用 addjob 前终止。若此时 SIGCHLD 触发信号处理函数，可能导致作业尚未添加就被删除。
+
+子进程解除阻塞:
+子进程需要确保新程序能正常处理信号（如 SIGINT）。
+
+2. 进程组与终端控制
+setpgid(0, 0) 的作用:
+将子进程放入独立进程组，避免接收终端的 SIGINT（Ctrl+C）和 SIGTSTP（Ctrl+Z）。
+
+终端前台进程组设置（潜在问题）:
+原代码未显式设置终端的前台进程组，可能导致前台作业无法接收终端信号。正确做法是调用 tcsetpgrp（需补充代码）。
+-----------------------------------------------------------
+示例流程
+
+假设用户输入 sleep 10 &（后台任务）：
+
+parseline 解析出 argv = {"sleep", "10", NULL}，bg = 1。
+
+builtin_cmd 检查非内置命令。
+
+父进程阻塞 SIGCHLD，fork 创建子进程。
+
+子进程设置新进程组，执行 sleep 10。
+
+父进程添加后台作业到 jobs 列表，打印 [1] 1234 sleep 10 &。
+
+父进程继续等待下一条命令，无需等待子进程。
+-----------------------------------------------------------
