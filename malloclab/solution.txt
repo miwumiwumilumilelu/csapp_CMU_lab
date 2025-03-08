@@ -46,8 +46,44 @@ header block_size footer
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE((char *)(bp) - WSIZE))
 #define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE((char *)(bp) - DSIZE))
 --------------------------------------------------------
-
+mm_init:
 --------------------------------------------------------
+int mm_init(void) {
+    // 申请四个字（每个字4字节）用于存储起始块、结尾块和序言块
+    if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1)
+        return -1;
+    PUT(heap_listp, 0);                     // 哨兵头：未分配
+    PUT(heap_listp + WSIZE, PACK(8, 1));       // 已分配块A（8字节）
+    PUT(heap_listp + 2 * WSIZE, PACK(8, 1));       // 已分配块B（8字节）
+    PUT(heap_listp + 3 * WSIZE, PACK(0, 1));       // 哨兵尾：已分配,信息位为1，是为了防止越界
+    heap_listp += (2 * WSIZE);                   // 移动到哨兵尾的位置,后续操作从哨兵尾开始管理空闲链表
+    // 申请一个初始的空闲块（CHUNKSIZE默认4KB）
+    if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
+        return -1; // 扩展失败
+    return 0; // 初始化成功
+}
+--------------------------------------------------------
+extend_heap:
+--------------------------------------------------------
+/* 扩展堆 以字为单位*/
+void *extend_heap(size_t words)
+{
+    char *bp;
+    size_t size;
+
+    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE; //按块对齐
+    if ((long)(bp = mem_sbrk(size)) == -1)
+        return NULL; // 申请失败
+        
+     // 初始化新扩展区域为自由块
+    PUT(HDRP(bp), PACK(size, 0)); // 设置头部和脚部
+    PUT(FTRP(bp), PACK(size, 0));
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); // 设置结尾块的信息位为1,多往后移动一块，作为保险区域，防止溢出
+
+    // 扩展堆之后，结尾块后面紧跟的就是有效载荷，结尾块变成该载荷的头部
+    return coalesce(bp);
+}
+--------------------------------------------------------    
 ./mdriver -V -f short1-bal.rep
 进行案例测试:
 --------------------------------------------------------
