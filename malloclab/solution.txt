@@ -83,7 +83,104 @@ void *extend_heap(size_t words)
     // 扩展堆之后，结尾块后面紧跟的就是有效载荷，结尾块变成该载荷的头部
     return coalesce(bp);
 }
---------------------------------------------------------    
+--------------------------------------------------------
+coalesce:
+--------------------------------------------------------
+/*
+ * coalesce - 合并相邻空闲块（边界标记法核心实现）
+ * @bp: 需要合并的块指针
+ * 返回值：合并后的块指针
+ */
+static void *coalesce(void *bp) {
+    // 获取相邻块的分配状态
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))); // 前一块是否分配
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp))); // 后一块是否分配
+    size_t size = GET_SIZE(HDRP(bp)); // 当前块原始大小
+
+    /* 情况1：前后块都已分配（无需合并）*/
+    if (prev_alloc && next_alloc) {
+        return bp;
+    }
+    /* 情况2：合并后侧空闲块 */
+    else if (prev_alloc && !next_alloc) {
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp))); // 合并后块大小
+        // 更新合并块的元数据
+        PUT(HDRP(bp), PACK(size, 0));
+        PUT(FTRP(bp), PACK(size, 0));
+    }
+    /* 情况3：合并前侧空闲块 */
+    else if (!prev_alloc && next_alloc) {
+        size += GET_SIZE(HDRP(PREV_BLKP(bp)));
+        // 将指针移动到前块起始位置
+        PUT(FTRP(bp), PACK(size, 0));
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+        bp = PREV_BLKP(bp);
+    }
+    /* 情况4：合并两侧空闲块 */
+    else {
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))) + 
+                GET_SIZE(FTRP(NEXT_BLKP(bp)));
+        // 更新前块的元数据
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
+        bp = PREV_BLKP(bp);
+    }
+    return bp;
+}
+--------------------------------------------------------
+mm_malloc:
+--------------------------------------------------------
+/*
+ * mm_malloc - 内存分配核心函数
+ * @size: 请求分配的字节数
+ * 返回值：分配的内存块指针
+ */
+void *mm_malloc(size_t size) {
+    size_t asize;      // 调整后的块大小
+    size_t extendsize; // 需要扩展的堆大小
+    char *bp;
+
+    if (size == 0) return NULL;
+
+    // 调整请求大小（包含元数据开销并保持对齐）
+    if (size <= DSIZE)
+        asize = 2 * DSIZE;  // 最小块大小（16字节：头尾各4，有效载荷8）
+    else
+        asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE); // 向上对齐到8的倍数
+
+    // 在空闲链表中寻找合适块
+    if ((bp = find_fit(asize)) != NULL) {
+        place(bp, asize);
+        return bp;
+    }
+
+    // 没有合适块则扩展堆
+    extendsize = MAX(asize, CHUNKSIZE);
+    if ((bp = extend_heap(extendsize / WSIZE)) == NULL)
+        return NULL;
+    place(bp, asize);
+    return bp;
+}
+--------------------------------------------------------
+find_fit:
+--------------------------------------------------------
+/*
+ * find_fit - 首次适配搜索策略
+ * @asize: 需要分配的调整后大小
+ * 返回值：找到的空闲块指针或NULL
+ */
+static void *find_fit(size_t asize) {
+    // 从头开始遍历隐式空闲链表
+    for (void *bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
+            return bp;
+        }
+    }
+    return NULL;
+}
+--------------------------------------------------------
+
+--------------------------------------------------------
 ./mdriver -V -f short1-bal.rep
 进行案例测试:
 --------------------------------------------------------
