@@ -179,7 +179,72 @@ static void *find_fit(size_t asize) {
     return NULL;
 }
 --------------------------------------------------------
-
+place:
+--------------------------------------------------------
+/* 
+ * place - 将请求的内存块放置到找到的空闲块中，可能分割剩余空间
+ * @bp: 指向空闲块的指针
+ * @asize: 需要分配的大小（包括头部和脚部，已对齐）
+ */
+void place(void *bp, size_t asize) {
+    size_t csize = GET_SIZE(HDRP(bp)); // 获取当前空闲块的总大小
+    
+    // 如果剩余空间足够大（至少16字节，用于维护新块的头部、脚部和最小有效载荷）
+    if ((csize - asize) >= 2 * DSIZE) {
+        // 将当前块标记为已分配，并设置其大小为asize
+        PUT(HDRP(bp), PACK(asize, 1)); // 写入头部
+        PUT(FTRP(bp), PACK(asize, 1)); // 写入脚部
+        bp = NEXT_BLKP(bp); // 移动到剩余部分的起始地址
+        // 将剩余空间初始化为新的空闲块
+        PUT(HDRP(bp), PACK(csize - asize, 0)); // 剩余块头部
+        PUT(FTRP(bp), PACK(csize - asize, 0)); // 剩余块脚部
+    } else {
+        // 剩余空间不足，整个块都分配出去，不分割
+        PUT(HDRP(bp), PACK(csize, 1)); // 更新头部为已分配
+        PUT(FTRP(bp), PACK(csize, 1)); // 更新脚部为已分配
+    }
+}
+--------------------------------------------------------
+mm_free:
+--------------------------------------------------------
+/* 
+ * mm_free - 释放内存块并合并相邻的空闲块
+ * @ptr: 要释放的内存块指针（指向有效载荷）
+ */
+void mm_free(void *ptr) {
+    size_t size = GET_SIZE(HDRP(ptr)); // 获取块的总大小
+    // 将头部和脚部标记为未分配
+    PUT(HDRP(ptr), PACK(size, 0)); 
+    PUT(FTRP(ptr), PACK(size, 0));
+    coalesce(ptr); // 合并相邻空闲块
+}
+--------------------------------------------------------
+mm_realloc:
+--------------------------------------------------------
+/* 
+ * mm_realloc - 重新分配内存大小（存在潜在错误）
+ * @ptr: 原内存块指针
+ * @size: 新请求的大小
+ * 实现方式：分配新块，复制数据，释放旧块
+ * 注意：原实现中获取原块大小的方式有误，正确方法应使用GET_SIZE宏
+ */
+void *mm_realloc(void *ptr, size_t size) {
+    void *oldptr = ptr;
+    void *newptr;
+    size_t copySize;
+    
+    newptr = mm_malloc(size); // 分配新块
+    if (newptr == NULL)
+      return NULL;
+    // 错误：原代码直接通过指针运算获取大小，应改用GET_SIZE
+    // copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE); // 错误写法
+    copySize = GET_SIZE(HDRP(oldptr)); // 正确获取原块大小
+    if (size < copySize)  // 确保拷贝大小不超过新块容量
+      copySize = size;
+    memcpy(newptr, oldptr, copySize); // 数据拷贝
+    mm_free(oldptr); // 释放原块
+    return newptr;
+}
 --------------------------------------------------------
 ./mdriver -V -f short1-bal.rep
 进行案例测试:
